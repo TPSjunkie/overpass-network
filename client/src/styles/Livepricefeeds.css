@@ -1,0 +1,81 @@
+/* src/styles/Livepricefeeds.css */
+
+.livePriceFeeds {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  
+  .livePriceFeeds h2 {
+    color: var(--pip-boy-green);
+    font-family: 'VT323', monospace;
+    margin-bottom: 0.5rem;
+    font-size: 1.5rem;
+    text-shadow: 0 0 5px var(--pip-boy-green);
+  }
+  
+  .priceFeedList {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .priceFeedItem {
+    background-color: var(--pip-boy-dark-green);
+    background-color: rgba(0, 255, 0, 0.2);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--pip-boy-border);
+    width: 18rem;
+    text-align: center;
+    box-shadow: 0 0 10px var(--pip-boy-green);
+  }
+  
+  .priceFeedItem h3 {
+    color: var(--pip-boy-green);
+    margin-bottom: 0.5rem;
+    font-size: 1.25rem;
+    text-shadow: 0 0 5px var(--pip-boy-green);
+  }
+  
+  .priceFeedItem p {
+    color: #d1d5db;
+    font-size: 1.125rem;
+  }
+  
+  .error {
+    color: #ef4444;
+    font-family: 'VT323', monospace;
+    background-color: var(--pip-boy-dark-green);
+    background-color: rgba(0, 255, 0, 0.2);
+    padding: 1.25rem;
+    border-radius: 0.5rem;
+    text-shadow: 0 0 5px red;
+  }
+  
+  .loading {
+    color: var(--pip-boy-green);
+    font-family: 'VT323', monospace;
+    font-size: 1.125rem;
+    text-shadow: 0 0 5px var(--pip-boy-green);
+  }
+  
+  .retryButton {
+    background-color: var(--pip-boy-dark-green);
+    color: var(--pip-boy-text);
+    border: 1px solid var(--pip-boy-border);
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+    font-family: 'VT323', monospace;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+  }
+  
+  .retryButton:hover {
+    background-color: var(--pip-boy-green);
+    color: var(--pip-boy-bg);
+  }

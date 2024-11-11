@@ -1,0 +1,26 @@
+{
+    "manifest_version": 3,
+    "name": "Overpass Channels",
+    "version": "1.0.0",
+    "description": "TON Overpass Channels Application",
+    "permissions": ["storage", "activeTab"],
+    "action": {
+      "default_popup": "index.html"
+    },
+    "content_security_policy": {
+      "extension_pages": "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval'; object-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://ton.access.orbs.network https://connect.tonhubapi.com; media-src 'self'"
+    },
+    "web_accessible_resources": [{
+      "resources": [
+        "assets/*",
+        "*.wasm",
+        "*.mp3"
+      ],
+      "matches": ["<all_urls>"]
+    }],
+    "icons": {
+      "16": "public/favicon.png",
+      "48": "public/favicon.png",
+      "128": "public/favicon.png"
+    }
+  }

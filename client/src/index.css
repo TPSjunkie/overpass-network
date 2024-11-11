@@ -1,0 +1,108 @@
+/* Tailwind CSS directives */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Game Boy Container */
+.gameboy-container {
+    background-color: #c0c0c0; /* Classic Game Boy gray */
+    border: 20px solid #8b8b8b;
+    border-radius: 20px 20px 60px 20px;
+    max-width: 400px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.5);
+    transform: perspective(1000px) rotate(5deg);
+    padding-bottom: 10px;
+  }
+  
+  /* Game Boy Screen */
+  .gameboy-screen {
+    background-color: #8bac0f; /* Game Boy screen green */
+    border: 10px solid #4f565d;
+    border-radius: 10px 10px 40px 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* Game Boy Scanlines Effect */
+  .scanline {
+    background-image: linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+    background-size: 100% 3px;
+  }
+  
+  /* Game Boy Buttons */
+  .gameboy-buttons {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .dpad {
+    width: 80px;
+    height: 80px;
+    position: relative;
+  }
+  
+  .dpad-button {
+    background-color: #333;
+    width: 24px;
+    height: 24px;
+    position: absolute;
+  }
+  
+  .start-select-button {
+    width: 40px;
+    height: 40px;
+    background-color: #333;
+    color: white;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .action-buttons {
+    display: flex;
+    gap: 20px;
+  }
+  
+  .action-button {
+    width: 60px;
+    height: 60px;
+    background-color: #e74c3c;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+  }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  .error-message {
+    color: #9bbc0f;
+    background: #0f380f;
+    padding: 1rem;
+    text-align: center;
+    font-family: 'VT323', monospace;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  
+  .app-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  

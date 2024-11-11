@@ -1,0 +1,221 @@
+;; ./contracts_func/wallet_extension.fc
+
+;; ./contracts_func/wallet_extension.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/stdlib.fc";
+#include "./import_libs/op-codes.fc";
+
+const int op::create_channel = 1;
+const int op::update_channel = 2;
+const int op::pre_authorize = 4;
+const int op::clear_pending = 5;
+
+;; Load contract data
+(int, int, int, cell, cell, cell) load_data() inline {
+    var ds = get_data().begin_parse();
+    return (
+        ds~load_uint(32),   ;; seqno
+        ds~load_uint(32),   ;; subwallet
+        ds~load_uint(256),  ;; public_key
+        ds~load_dict(),     ;; channels
+        ds~load_dict(),     ;; pending_transactions
+        ds~load_dict()      ;; pre_authorized_channels
+    );
+}
+
+;; Store contract data
+() store_data(int seqno, int subwallet, int public_key, cell channels, cell pending_transactions, cell pre_authorized_channels) impure inline {
+    set_data(begin_cell()
+        .store_uint(seqno, 32)
+        .store_uint(subwallet, 32)
+        .store_uint(public_key, 256)
+        .store_dict(channels)
+        .store_dict(pending_transactions)
+        .store_dict(pre_authorized_channels)
+        .end_cell());
+}
+
+;; Serialize ChannelState
+cell serialize_channel_state(int balance, int nonce, int group, cell merkle_root) inline {
+    return begin_cell()
+        .store_uint(balance, 64)
+        .store_uint(nonce, 32)
+        .store_uint(group, 8)
+        .store_ref(merkle_root)
+        .end_cell();
+}
+
+;; Deserialize ChannelState
+(int, int, int, cell) deserialize_channel_state(slice cs) inline {
+    return (
+        cs~load_uint(64),  ;; balance
+        cs~load_uint(32),  ;; nonce
+        cs~load_uint(8),   ;; group
+        cs~load_ref()      ;; merkle_root
+    );
+}
+
+;; Function to clear pending transaction after acceptance
+() clear_pending_transaction(int channel_id) impure inline {
+    var (seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels) = load_data();
+
+    ;; Remove pending transaction for the channel
+    pending_transactions~udict_delete?(32, channel_id);
+
+    ;; Update the state with cleared pending transactions
+    store_data(seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels);
+}
+
+;; Handle inbound messages
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { return (); }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) { return (); }
+    slice sender_address = cs~load_msg_addr();
+    var (seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels) = load_data();
+    int op = in_msg_body~load_uint(32);
+    
+    if (op == op::create_channel) {
+        int channel_id = in_msg_body~load_uint(32);
+        int initial_balance = in_msg_body~load_uint(64);
+        int group = in_msg_body~load_uint(8);
+        cell merkle_root = begin_cell().end_cell();
+        cell state = serialize_channel_state(initial_balance, 0, group, merkle_root);
+        channels~udict_set_ref(32, channel_id, state);
+    }
+    elseif (op == op::update_channel) {
+        int channel_id = in_msg_body~load_uint(32);
+        cell proof = in_msg_body~load_ref();
+        (slice cs, int found?) = channels.udict_get?(32, channel_id);
+        throw_unless(60, found?);
+        var (balance, nonce, group, merkle_root) = deserialize_channel_state(cs);
+        nonce += 1;
+        cell new_state = serialize_channel_state(balance, nonce, group, merkle_root);
+        channels~udict_set_ref(32, channel_id, new_state);
+    }
+    elseif (op == op::close_channel) {
+        int channel_id = in_msg_body~load_uint(32);
+        cell proof = in_msg_body~load_ref();
+        (slice cs, int found?) = channels.udict_get?(32, channel_id);
+        throw_unless(60, found?);
+        channels~udict_delete?(32, channel_id);
+    }
+    elseif (op == op::pre_authorize) {
+        int channel_id = in_msg_body~load_uint(32);
+        slice intermediate_address = in_msg_body~load_msg_addr();
+        pre_authorized_channels~udict_set(32, channel_id, intermediate_address);
+    }
+    elseif (op == op::clear_pending) {
+        int channel_id = in_msg_body~load_uint(32);
+        clear_pending_transaction(channel_id);
+    }
+    
+    store_data(seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels);
+}
+
+;; Handle external messages
+() recv_external(slice in_msg) impure {
+    var signature = in_msg~load_bits(512);
+    var cs = in_msg;
+    var (subwallet_id, valid_until, msg_seqno) = (cs~load_uint(32), cs~load_uint(32), cs~load_uint(32));
+    throw_if(35, valid_until <= now());
+    var (seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels) = load_data();
+    throw_unless(33, msg_seqno == seqno);
+    throw_unless(34, subwallet_id == subwallet);
+    throw_unless(35, check_signature(slice_hash(in_msg), signature, public_key));
+    accept_message();
+    cs~touch();
+    
+    int op = cs~load_uint(32);
+    if (op == op::create_channel) {
+        int channel_id = cs~load_uint(32);
+        int initial_balance = cs~load_uint(64);
+        int group = cs~load_uint(8);
+        cell merkle_root = begin_cell().end_cell();
+        cell state = serialize_channel_state(initial_balance, 0, group, merkle_root);
+        channels~udict_set_ref(32, channel_id, state);
+    }
+    elseif (op == op::pre_authorize) {
+        int channel_id = cs~load_uint(32);
+        slice intermediate_address = cs~load_msg_addr();
+        pre_authorized_channels~udict_set(32, channel_id, intermediate_address);
+    }
+    
+    store_data(seqno + 1, subwallet, public_key, channels, pending_transactions, pre_authorized_channels);
+}
+
+;; Get methods
+int seqno() method_id {
+    return get_data().begin_parse().preload_uint(32);
+}
+
+int get_public_key() method_id {
+    var cs = get_data().begin_parse();
+    cs~load_uint(64);
+    return cs.preload_uint(256);
+}
+
+(int, int, int, int, cell) get_channel_state(int channel_id) method_id {
+    var (_, _, _, channels, _, _) = load_data();
+    (slice cs, int found?) = channels.udict_get?(32, channel_id);
+    if (found?) {
+        var (balance, nonce, group, merkle_root) = deserialize_channel_state(cs);
+        return (channel_id, balance, nonce, group, merkle_root);
+    } else {
+        return (0, 0, 0, 0, null());
+    }
+}
+
+;; Get methods for pending transactions (for internal messages)
+(int, int, int, int, cell) get_pending_transaction(int channel_id) method_id {
+    var (seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels) = load_data();
+    (slice cs, int found?) = pending_transactions.udict_get?(32, channel_id);
+    if (found?) {
+        var (balance, nonce, group, merkle_root) = deserialize_channel_state(cs);
+        return (channel_id, balance, nonce, group, merkle_root);
+    } else {
+        return (0, 0, 0, 0, null());
+    }
+}
+;; Get methods for pending transactions (for external messages)
+(int, int, int, int, cell) get_pending_transaction_ext(int channel_id) method_id {
+    var (seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels) = load_data();
+    (slice cs, int found?) = pending_transactions.udict_get?(32, channel_id);
+    if (found?) {
+        var (balance, nonce, group, merkle_root) = deserialize_channel_state(cs);
+        return (channel_id, balance, nonce, group, merkle_root);
+    } else {
+        return (0, 0, 0, 0, null());
+    }
+}
+int get_channel_balance(int channel_id) method_id {
+    var (seqno, subwallet, public_key, channels, pending_transactions, pre_authorized_channels) = load_data();
+    (slice cs, int found?) = channels.udict_get?(32, channel_id);
+    if (found?) {
+        var (balance, _, _, _) = deserialize_channel_state(cs);
+        return balance;
+    } else {
+        return 0;
+    }
+}
+int get_channel_count() method_id {
+    var (_, _, _, channels, _, _) = load_data();
+    if (channels.dict_empty?()) {
+        return 0;
+    } else {
+        (int key, _, int found) = channels.udict_get_next?(32, 0);
+        return found ? (key + 1) : 0;
+    }
+}
+slice get_pre_authorized_intermediate(int channel_id) method_id {
+    var (_, _, _, _, _, pre_authorized_channels) = load_data();
+    (slice address, int found?) = pre_authorized_channels.udict_get?(32, channel_id);
+    if (found?) {
+        return address;
+    } else {
+        return null();
+    }
+}

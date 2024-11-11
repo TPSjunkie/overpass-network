@@ -1,0 +1,19 @@
+/* animations */
+
+@keyframes scanlines {
+    0% {
+        transform: translate3d(0, 200000%, 0);
+    }
+}
+@keyframes scanline {
+    0% {
+        transform: translate3d(0, 0, 0);
+    }
+    100% {
+        transform: translate3d(0, 100%, 0);
+    }
+}
+
+
+/* animations */
+

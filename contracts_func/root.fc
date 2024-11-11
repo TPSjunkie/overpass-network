@@ -1,0 +1,197 @@
+;; ./contracts/root.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/op-codes.fc";
+#include "./import_libs/stdlib.fc";
+
+;; Constants for operations
+const int MSG_UPDATE_CHANNEL = 0x01;
+const int MSG_CROSS_SHARD_TX = 0x02;
+const int MSG_CROSS_CHANNEL_TX = 0x03;
+
+;; Error codes
+const int ERROR_INSUFFICIENT_FEE = 101;
+const int ERROR_CHANNEL_NOT_FOUND = 102;
+const int ERROR_INVALID_SENDER = 103;
+const int ERROR_MAX_CHANNELS_REACHED = 104;
+const int ERROR_MERKLE_UPDATE_FAILED = 105;
+const int ERROR_UNSUPPORTED_OPERATION = 106;
+
+;; Fee constants
+const int UPDATE_FEE = 100000000;  ;; Example fee for updating channels
+const int MAX_CHANNELS = 1000;     ;; Maximum number of channels allowed
+
+;; Global storage variables
+global int merkle_root;          ;; Global Merkle root for all channels
+global cell channel_states;         ;; Stores the state of all channels
+global cell pending_updates;        ;; Pending updates to be applied to the channel states
+global slice owner_address;         ;; Owner address of the contract
+
+;; Function prototypes
+() update_channel(int msg_value, slice msg_body) impure;
+() process_cross_shard_tx(slice msg_body) impure;
+() process_cross_channel_tx(slice msg_body) impure;
+
+;; Helper function to get the channel count
+int get_channel_count() {
+    int count = 0;
+    int key = -1;
+    do {
+        (key, slice cs, int f) = channel_states.udict_get_next?(32, key);
+        if (f) {
+            count += 1;
+        }
+    } until (~ f);
+    return count;
+}
+
+
+
+;; Helper function to combine hashes
+int combine_hashes(int hash1, int hash2) {
+    return cell_hash(begin_cell().store_uint(hash1, 256).store_uint(hash2, 256).end_cell());
+}
+
+;; Helper function to get current shard
+int get_current_shard() {
+    (int wc, int addr_hash) = parse_std_addr(my_address());
+    return addr_hash >> 8; ;; Use the top 24 bits of the address as the shard identifier
+}
+
+
+;; Helper function to emit log for cross-shard transaction
+() emit_log_cross_shard_tx(int source_shard, int dest_shard, int channel_id, int new_state) impure {
+    var msg = begin_cell()
+        .store_uint(MSG_CROSS_SHARD_TX, 32)
+        .store_uint(source_shard, 32)
+        .store_uint(dest_shard, 32)
+        .store_uint(channel_id, 32)
+        .store_int(new_state, 256)
+    .end_cell();
+    send_raw_message(msg, 0);
+}
+
+;; Helper function to emit log for update
+() emit_log_update(int channel_id, int new_state) impure {
+    var msg = begin_cell()
+        .store_uint(MSG_UPDATE_CHANNEL, 32)
+        .store_uint(channel_id, 32)
+        .store_int(new_state, 256)
+    .end_cell();
+    send_raw_message(msg, 0);
+}
+
+
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+
+    if (flags & 1) { ;; Ignore bounced messages
+        return ();
+    }
+
+    int op = in_msg_body~load_uint(32);
+
+    if (op == MSG_UPDATE_CHANNEL) {
+        update_channel(msg_value, in_msg_body);
+    } elseif (op == MSG_CROSS_SHARD_TX) {
+        process_cross_shard_tx(in_msg_body);
+    } elseif (op == MSG_CROSS_CHANNEL_TX) {
+        process_cross_channel_tx(in_msg_body);
+    } else {
+        throw(ERROR_UNSUPPORTED_OPERATION);
+    }
+}
+;; Updates the channel state and recalculates the global Merkle root
+() update_channel(int msg_value, slice msg_body) impure {
+    int channel_id = msg_body~load_uint(32);
+    int new_state = msg_body~load_int(256);
+    slice sender_address = msg_body~load_msg_addr();
+
+    ;; Ensure sufficient fee is provided
+    throw_unless(ERROR_INSUFFICIENT_FEE, msg_value >= UPDATE_FEE);
+
+    ;; Verify sender authorization (must be owner)
+    throw_unless(ERROR_INVALID_SENDER, equal_slices(sender_address, owner_address));
+
+    ;; Check if the channel exists, or if it's a new channel
+    (slice state_slice, int found) = channel_states.udict_get?(32, channel_id);
+    if (~ found) {
+        int channel_count = get_channel_count();
+        throw_unless(ERROR_MAX_CHANNELS_REACHED, channel_count < MAX_CHANNELS);
+    }
+
+    ;; Update the channel state in the channel_states dictionary
+    channel_states~udict_set(32, channel_id, begin_cell().store_int(new_state, 256).end_cell().begin_parse());
+
+    ;; Emit log for the update
+    emit_log_update(channel_id, new_state);
+}
+
+;; Process cross-shard transactions
+() process_cross_shard_tx(slice msg_body) impure {
+    int source_shard = msg_body~load_uint(32);
+    int dest_shard = msg_body~load_uint(32);
+    int channel_id = msg_body~load_uint(32);
+    int new_state = msg_body~load_int(256);
+
+    ;; Ensure the transaction involves the current shard
+    throw_unless(ERROR_INVALID_SENDER, (source_shard == get_current_shard()) | (dest_shard == get_current_shard()));
+
+    ;; Update the channel state
+    channel_states~udict_set(32, channel_id, begin_cell().store_int(new_state, 256).end_cell().begin_parse());
+
+    ;; Emit log for the cross-shard transaction
+    emit_log_cross_shard_tx(source_shard, dest_shard, channel_id, new_state);
+}
+
+;; Process cross-channel transactions
+() process_cross_channel_tx(slice msg_body) impure {
+    int source_channel = msg_body~load_uint(32);
+    int dest_channel = msg_body~load_uint(32);
+    int amount = msg_body~load_int(256);
+
+    (slice source_state, int source_found) = channel_states.udict_get?(32, source_channel);
+    (slice dest_state, int dest_found) = channel_states.udict_get?(32, dest_channel);
+    throw_unless(ERROR_CHANNEL_NOT_FOUND, source_found & dest_found);
+
+    int source_balance = source_state~load_int(256);
+    int dest_balance = dest_state~load_int(256);
+
+    source_balance -= amount;
+    dest_balance += amount;
+
+    ;; Update both channel states
+    channel_states~udict_set(32, source_channel, begin_cell().store_int(source_balance, 256).end_cell().begin_parse());
+    channel_states~udict_set(32, dest_channel, begin_cell().store_int(dest_balance, 256).end_cell().begin_parse());
+
+    ;; Emit log for the cross-channel transaction
+    emit_log_update(source_channel, source_balance);
+    emit_log_update(dest_channel, dest_balance);
+}
+
+;; Getter for the current Merkle root
+int get_merkle_root() method_id {
+    return merkle_root;
+}
+
+;; Getter for a specific channel's state
+(int, int) get_channel_state(int channel_id) method_id {
+    (slice state_slice, int found) = channel_states.udict_get?(32, channel_id);
+    if (found) {
+        return (found, state_slice~load_int(256));
+    } else {
+        return (0, 0); ;; Channel not found
+    }
+}
+
+;; Initialization function (called on contract deployment)
+() init(slice init_owner) impure {
+    set_data(begin_cell()
+        .store_slice(init_owner)
+        .store_dict(new_dict())
+        .store_dict(new_dict())
+        .store_uint(0, 256)
+    .end_cell());
+}

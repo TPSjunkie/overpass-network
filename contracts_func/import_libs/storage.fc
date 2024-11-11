@@ -1,0 +1,95 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+
+global cell merkle_tree;
+global cell fee_info;
+global cell nullifiers;
+global cell jetton_info;
+
+() load_data() impure inline {
+    var ds = get_data().begin_parse();
+    merkle_tree = ds~load_ref();
+    fee_info = ds~load_ref();
+    nullifiers = ds~load_dict();
+    jetton_info = ds~load_ref();
+}
+
+() save_data() impure inline {
+    set_data(begin_cell()
+        .store_ref(merkle_tree)
+        .store_ref(fee_info)
+        .store_dict(nullifiers)
+        .store_ref(jetton_info)
+    .end_cell());
+}
+
+(slice, slice, int, int, int, int, int) unpack_fee_info(cell fee_info) inline {
+    slice ds = fee_info.begin_parse();
+    return (
+        ds~load_msg_addr(),  ;; fee_recipient
+        ds~load_msg_addr(),  ;; reward_master_address
+        ds~load_uint(16),    ;; fee_percent
+        ds~load_uint(32),    ;; tonnel_mint_amount_deposit
+        ds~load_uint(32),    ;; tonnel_mint_amount_relayer
+        ds~load_coins(),     ;; fee_amount_total
+        ds~load_coins()      ;; deposit_fee
+    );
+}
+
+cell pack_fee_info(slice fee_recipient, slice reward_master_address, int fee_percent, int tonnel_mint_amount_deposit, int tonnel_mint_amount_relayer, int fee_amount_total, int deposit_fee) inline {
+    return begin_cell()
+        .store_slice(fee_recipient)
+        .store_slice(reward_master_address)
+        .store_uint(fee_percent, 16)
+        .store_uint(tonnel_mint_amount_deposit, 32)
+        .store_uint(tonnel_mint_amount_relayer, 32)
+        .store_coins(fee_amount_total)
+        .store_coins(deposit_fee)
+    .end_cell();
+}
+
+(slice, cell, cell) unpack_jetton_info(cell jetton_info) inline {
+    slice ds = jetton_info.begin_parse();
+    return (
+        ds~load_msg_addr(),  ;; jetton_master_address
+        ds~load_ref(),       ;; JETTON_BYTECODE
+        ds~load_dict()       ;; stucks
+    );
+}
+
+cell pack_jetton_info(slice jetton_master_address, cell JETTON_BYTECODE, cell stucks) inline {
+    return begin_cell()
+        .store_slice(jetton_master_address)
+        .store_ref(JETTON_BYTECODE)
+        .store_dict(stucks)
+    .end_cell();
+}
+
+int is_known_root(int root) inline {
+    (int current_root, _, _, _) = unpack_merkle_data(merkle_tree);
+    return root == current_root;
+}
+
+int is_unknown_nullifier(int nullifier_hash, cell nullifiers) inline {
+    (_, int found) = nullifiers.udict_get?(256, nullifier_hash);
+    return ~ found;
+}
+
+(int, int, cell, int) unpack_merkle_data(cell merkle_data) inline {
+    slice ds = merkle_data.begin_parse();
+    return (
+        ds~load_uint(256), ;; current_root
+        ds~load_uint(32),  ;; index
+        ds~load_dict(),    ;; tree
+        ds~load_uint(32)   ;; tree_size
+    );
+}
+
+cell pack_merkle_data(int current_root, int index, cell tree, int tree_size) inline {
+    return begin_cell()
+        .store_uint(current_root, 256)
+        .store_uint(index, 32)
+        .store_dict(tree)
+        .store_uint(tree_size, 32)
+    .end_cell();
+}

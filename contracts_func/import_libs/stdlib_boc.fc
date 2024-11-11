@@ -1,0 +1,129 @@
+;; Standard library for funC    
+;; boc library v1.0.2               
+#pragma version >=0.2.0;
+
+;; Standard library for funC
+#include "stdlib.fc";
+
+;; BOC primitives
+cell get_data() asm "c4 PUSH";
+() set_data(cell c) impure asm "c4 POP";
+
+slice get_c3() asm "c3 PUSH";
+() set_c3(slice x) impure asm "c3 POP";
+
+builder store_coins(builder b, int x) asm "STVARUINT16";
+(slice, ((int))) load_coins() asm "c4 PUSH";
+builder begin_cell() asm "NEWC";
+cell end_cell(builder b) asm "ENDC";
+builder store_ref(builder b, cell c) asm(c b) "STREF";
+builder store_slice(builder b, slice s) asm "STSLICER";
+builder store_grams(builder b, int x) asm "STGRAMS";
+builder store_dict(builder b, cell c) asm(c b) "STDICT";
+
+(slice, slice) load_msg_addr(slice s) asm( -> 1 0) "LDMSGADDR";
+(slice, int) load_msg_addr_int(slice s) asm( -> 1 0) "LDMSGADDR";
+
+cell udict_set_ref(cell dict, int key_len, int index, cell value) asm(value index dict key_len) "DICTUSETREF";
+(cell, int) udict_get_ref?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUGETREF";
+(cell, int) udict_delete?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUDEL";
+(slice, int) udict_get?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUGET" "NULLSWAPIFNOT";
+
+cell udict_set(cell dict, int key_len, int index, slice value) asm(value index dict key_len) "DICTUSET";
+(cell, int) udict_add?(cell dict, int key_len, int index, slice value) asm(value index dict key_len) "DICTUADD";
+(cell, int) udict_replace?(cell dict, int key_len, int index, slice value) asm(value index dict key_len) "DICTUREPLACE";
+(cell, slice, int) udict_delete_get?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUDELGET" "NULLSWAPIFNOT";
+
+(cell, int) udict_get_next?(cell dict, int key_len, int index) asm(index dict key_len) "DICTUGETNEXTPAIR";
+
+;; Optimized utility functions for handling cells, slices, and dictionaries in TON smart contracts.
+
+;; Load and store data functions.
+cell load_data_cell() inline {
+    return get_data();
+}
+
+() save_data_cell(cell c) impure inline {
+    set_data(c);
+}
+
+;; Handling slices and data within slices.
+int slice_refs_count(slice s) inline {
+    return slice_refs(s);
+}
+
+int slice_bit_length(slice s) inline {
+    return slice_bits(s);
+}
+
+int is_slice_empty(slice s) inline {
+    return slice_empty?(s);
+}
+
+slice get_slice_data(slice s) inline {
+    return slice_data(s);
+}
+
+;; Begin and finalize cell building.
+builder start_new_cell() inline {
+    return begin_cell();
+}
+
+cell finalize_cell(builder b) inline {
+    return end_cell(b);
+}
+
+;; Storage and retrieval from dictionaries.
+(cell, int) update_dict_with_ref(cell dict, int key_len, int index, cell value) inline {
+    return udict_set_ref(dict, key_len, index, value);
+}
+
+(cell, int) get_dict_ref(cell dict, int key_len, int index) inline {
+    return udict_get_ref?(dict, key_len, index);
+}
+
+(cell, int) delete_dict_entry(cell dict, int key_len, int index) inline {
+    return udict_delete?(dict, key_len, index);
+}
+
+(cell, slice, int) get_and_delete_dict_entry(cell dict, int key_len, int index) inline {
+    return udict_delete_get?(dict, key_len, index);
+}
+
+cell set_dict_entry(cell dict, int key_len, int index, slice value) inline {
+    return udict_set(dict, key_len, index, value);
+}
+
+(cell, int) add_to_dict(cell dict, int key_len, int index, slice value) inline {
+    return udict_add?(dict, key_len, index, value);
+}
+
+(cell, int) replace_in_dict(cell dict, int key_len, int index, slice value) inline {
+    return udict_replace?(dict, key_len, index, value);
+}
+
+(slice, int) get_dict_entry(cell dict, int key_len, int index) inline {
+    return udict_get?(dict, key_len, index);
+}
+
+(cell, int) get_next_dict_entry(cell dict, int key_len, int index) inline {
+    return udict_get_next?(dict, key_len, index);
+}
+
+;; Utility functions for working with coins.
+builder store_coins_in_builder(builder b, int amount) inline {
+    return store_coins(b, amount);
+}
+
+(slice, int) load_coins_from_slice() inline {
+    return load_coins();
+}
+
+;; Optimized handling of message addresses.
+(slice, slice) parse_msg_address(slice s) inline {
+    return load_msg_addr(s);
+}
+
+(slice, int) parse_msg_address_int(slice s) inline {
+    return load_msg_addr_int(s);
+}

@@ -1,0 +1,215 @@
+/* src/styles/Home.css */
+
+.home {
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  min-height: 100vh;
+  position: relative;
+}
+
+.title {
+
+  font-size: 2.25rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  color: var(--pip-boy-green);
+  font-family: 'VT323', monospace;
+  text-shadow: 0 0 5px var(--pip-boy-green);
+}
+
+.description {
+
+  font-size: 1.125rem;
+  max-width: 42rem;
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #d1d5db;
+}
+
+.priceCharts {
+
+  width: 100%;
+  max-width: 48rem;
+  margin-bottom: 2rem;
+}
+
+.features {
+
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.feature {
+
+  background-color: rgba(var(--pip-boy-dark-green-rgb), 0.2);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  width: 16rem;
+  text-align: center;
+  border: 1px solid var(--pip-boy-border);
+  box-shadow: 0 0 10px var(--pip-boy-green);
+}
+
+.feature h3 {
+
+  color: var(--pip-boy-green);
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 5px var(--pip-boy-green);
+}
+
+.feature p {
+
+  color: #d1d5db;
+  font-size: 0.875rem;
+}
+
+.cta {
+
+  background-color: var(--pip-boy-green);
+  color: black;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+  font-family: 'VT323', monospace;
+  box-shadow: 0 0 5px var(--pip-boy-green);
+}
+
+.cta:hover {
+
+  background-color: var(--pip-boy-dark-green);
+  color: var(--pip-boy-bg);
+}
+
+/* src/styles/Home.css */
+
+.scanline {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(167, 201, 87, 0.1),
+    rgba(167, 201, 87, 0.1) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.shadow-pip-boy {
+  text-shadow: 0 0 5px rgba(167, 201, 87, 0.7);
+}
+
+.pipboy-nav-link {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: #a7c957;
+  font-weight: 600;
+  border-radius: 0.375rem;
+  transition: background-color 0.3s ease;
+}
+
+.pipboy-nav-link:hover {
+  background-color: rgba(167, 201, 87, 0.2);
+}
+
+
+.scanline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0) 20%,
+    rgba(0, 0, 0, 0.2) 20%,
+    rgba(0, 0, 0, 0.2)
+  );
+  background-size: 100% 6px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.9;
+  animation: scanlines 74s linear infinite;  
+}
+.glow-text {
+  text-shadow: 0 0 2px var(--pip-boy-green);
+}
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
+  }
+}
+
+.scanlines::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 50%,
+    rgba(0, 0, 0, 0.1) 51%
+  );
+  background-size: 100% 4px;
+  animation: scanlines 62s linear infinite;
+  pointer-events: none;
+}
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
+  }
+}
+
+/* src/styles/Home.css */
+
+.home-container {
+  position: relative;
+}
+
+.scanline {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(167, 201, 87, 0.1),
+    rgba(167, 201, 87, 0.1) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.shadow-pip-boy {
+  text-shadow: 0 0 5px rgba(167, 201, 87, 0.7);
+}
+
+.pipboy-nav-link {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: #a7c957;
+  font-weight: 600;
+  border-radius: 0.375rem;
+  transition: background-color 0.3s ease;
+}
+
+.pipboy-nav-link:hover {
+  background-color: rgba(167, 201, 87, 0.2);
+}

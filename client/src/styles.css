@@ -1,0 +1,98 @@
+/* Base styles */
+html, body {
+    position: fixed;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* Custom scrollbar hiding */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Scanline animations */
+  @keyframes scanline {
+    0% {
+      transform: translateY(0);
+    }
+    100% {
+      transform: translateY(100%);
+    }
+  }
+  
+  @keyframes scanlines {
+    0% {
+      background-position: 0 0;
+    }
+    100% {
+      background-position: 0 100%;
+    }
+  }
+
+@keyframes thinscan {
+    0% {
+        background-position: 0 0;
+        transform: scaleY(0.6);
+    }
+    100% {
+        background-position: 0 100%;
+        transform: scaleY(0.6);
+    }
+    
+  }
+  
+  .animate-scanline {
+    size: 4px;
+    animation: scanline 8s linear infinite;
+  }
+  
+  .animate-scanlines {
+    animation: scanlines 4s linear infinite;
+  }
+  
+  /* Game Boy specific styles */
+  .gameboy-screen {
+    height: 100%;
+    max-height: calc(100vh - 12rem); /* Account for controls */
+    overflow: hidden;
+  }
+  
+  .screen-content {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+  }

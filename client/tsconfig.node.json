@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    // Base Config
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+
+    // Module Resolution
+    "paths": {
+      "@/*": ["./src/*"],
+      "~/*": ["./src/*"],
+      "@ton/*": ["./node_modules/@ton/*"],
+      "@wasm/*": ["./src/wasm/*"],
+      "@components/*": ["./src/components/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@types/*": ["./src/types/*"]
+    },
+    "resolveJsonModule": true,
+    "types": ["node", "vite/client"],
+    
+    // Additional Settings
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    
+    // Project References
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.node.tsbuildinfo"
+  },
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "postcss.config.js",
+    "tailwind.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    ".history"
+  ]
+}

@@ -1,0 +1,51 @@
+
+;; Create a new payment channel
+() create_channel(slice payload) impure {
+  ;; Deserialize payload to get channel details
+  var (tx_op, tx_nonce, tx_amount, tx_sender, tx_recipient, tx_timestamp, tx_id) = deserialize_transaction(payload);
+  
+  ;; Verify transaction
+  if (tx_op != OP_CREATE_CHANNEL) {
+    return ();
+  }
+  
+  ;; Load current contract state
+  cell stored_state = get_data();
+  var (seqno, balance, last_tx_lt, last_tx_hash) = deserialize_contract_state(stored_state);
+  
+  ;; Verify nonce and balance
+  if (tx_nonce != seqno + 1) {
+    return ();
+  }
+  
+  ;; Create new channel state
+  int channel_id = generate_channel_id();
+  cell participants = begin_cell().store_slice(tx_sender).store_slice(tx_recipient).end_cell();
+  cell balances = begin_cell().store_uint(tx_amount, 64).store_uint(0, 64).end_cell();
+  cell channel_state = begin_cell()
+    .store_uint(channel_id, 64)
+    .store_ref(participants)
+    .store_ref(balances)
+    .store_uint(STATUS_PENDING, 8)
+    .store_uint(tx_timestamp, 64)
+    .store_uint(tx_timestamp + CHANNEL_DURATION, 64)
+    .end_cell();
+  
+  ;; Store the new channel state
+  set_data(channel_state);
+  
+  ;; Update contract state
+  balance -= tx_amount;
+  seqno += 1;
+  last_tx_lt = tx_timestamp;
+  last_tx_hash = tx_id;
+  
+  ;; Serialize and store updated state
+  cell updated_state = begin_cell()
+    .store_uint(seqno, 32)
+    .store_uint(balance, 64)
+    .store_uint(last_tx_lt, 64)
+    .store_uint(last_tx_hash, 256)
+    .end_cell();
+  set_data(updated_state);
+}

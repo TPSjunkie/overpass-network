@@ -1,0 +1,97 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+#include "math.fc";
+
+slice utils::address_to_hex_string(int value) inline {
+    if (value == 0) {
+        builder buffer = begin_cell();
+        repeat(64) {
+            buffer = buffer.store_uint("0"u, 8);
+        }
+        return buffer.end_cell().begin_parse();
+    } else {
+        int i = 0;
+        int mask = 15;
+        builder buffer = begin_cell();
+
+        repeat(64) {
+            int curr = (value & mask);
+            if (curr > 9) {
+                buffer = buffer.store_uint(55 + curr, 8);
+            } else {
+                buffer = buffer.store_uint(48 + curr, 8);
+            }
+            value = value >> 4;
+        }
+
+        builder final_cell = begin_cell();
+        slice reversed_buffer = buffer.end_cell().begin_parse();
+    
+        repeat(64) {
+            slice chr = reversed_buffer.preload_bits(8);
+            final_cell = final_cell.store_slice(chr);
+            reversed_buffer = reversed_buffer.skip_bits(8);
+        }
+        return final_cell.end_cell().begin_parse();
+    }
+}
+
+slice utils::number_to_slice(int number) inline {
+    builder text_b = begin_cell();
+    if (number < 0) {
+        text_b = text_b.store_uint("-"u, 8);
+        number = - number;
+    }
+    
+    int len = 0;
+    int value = 0;
+    int mult = 1;
+    do {
+        (number, int res) = number.divmod(10);
+        value = value + (res + 48) * mult;
+        mult = mult * 256;
+        len = len + 1;
+    } until (number == 0);
+    
+    return text_b.store_uint(value, len * 8).end_cell().begin_parse();
+}
+
+() utils::send_custom(int amount, int op, slice to, int mode) impure inline {
+    cell msg = begin_cell()
+        .store_uint(0x10, 6)
+        .store_slice(to)
+        .store_coins(amount)
+        .store_uint(0, 107)
+        .store_uint(op, 32)
+        .store_uint(cur_lt(), 64)
+    .end_cell();
+    send_raw_message(msg, mode);
+}
+
+() utils::send_excesses(int amount, slice to, int mode) impure inline {
+    utils::send_custom(amount, op::excesses(), to, mode);
+}
+
+int utils::to_coins(int n) inline {
+    return n * ONE_TON;
+}
+
+() utils::send_grams(slice address, int amount) impure inline {
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(address)
+        .store_coins(amount)
+        .store_uint(0, 107)
+    .end_cell();
+    send_raw_message(msg, 3);
+}
+
+int utils::get_workchain(slice address) inline {
+    (int wc, _) = parse_std_addr(address);
+    return wc;
+}
+
+() utils::force_chain(int workchain, slice address, int error_code) impure inline {
+    (int wc) = utils::get_workchain(address);
+    throw_unless(error_code, wc == workchain);
+}

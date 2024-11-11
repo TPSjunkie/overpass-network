@@ -1,0 +1,70 @@
+/* src/styles/HeartbeatChart.css */
+
+.chartContainer {
+
+  width: 100%;
+  height: 18rem;
+  background-color: black;
+  border: 2px solid var(--pip-boy-green);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  position: relative;
+}
+
+.chartContainer canvas {
+
+  width: 100%;
+  height: 100%;
+}
+
+.chart {
+
+  width: 100%;
+  height: 100%;
+}
+
+/* Custom styles for SVG elements */
+.line {
+  fill: none;
+  stroke: var(--pip-boy-green);
+  stroke-width: 2;
+}
+
+.line.red {
+  stroke: #ff0000;
+}
+
+.line.green {
+  stroke: var(--pip-boy-green);
+}
+
+/* Axis styles for the chart */
+.axis {
+
+  font-family: 'VT323', monospace;
+  font-size: 0.75rem;
+  fill: currentColor;
+  color: var(--pip-boy-green);
+}
+
+.axis .domain {
+  display: none;
+}
+
+.axis .tick line {
+  stroke: var(--pip-boy-green);
+  stroke-width: 1;
+}
+
+.axis .tick text {
+  fill: var(--pip-boy-green);
+}
+
+.axis .tick.minor line {
+  stroke: var(--pip-boy-green);
+  stroke-width: 1;
+}
+
+.axis .tick.minor text {
+  fill: var(--pip-boy-green);
+}

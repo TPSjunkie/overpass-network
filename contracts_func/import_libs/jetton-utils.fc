@@ -1,0 +1,81 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+#include "op-codes.fc";
+
+const int SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE = 64;
+
+() send_jetton(slice recipient, int amount, slice JETTON_MASTER_ADDRESS, cell JETTON_BYTE_CODE) impure inline {
+    if (amount == 0) {
+        return ();
+    }
+    slice jetton_wallet = calculate_user_jetton_wallet_address(my_address(), JETTON_MASTER_ADDRESS, JETTON_BYTE_CODE);
+
+    var msg = begin_cell()
+            .store_uint(0x10, 6) ;; nobounce - int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddress -> 011000
+            .store_slice(jetton_wallet)
+            .store_coins(10000000) ;; 0.01 TON for gas
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_ref(
+                begin_cell()
+                    .store_uint(op::transfer(), 32)
+                    .store_uint(0, 64)
+                    .store_coins(amount)
+                    .store_slice(recipient)
+                    .store_slice(recipient)
+                    .store_uint(0, 1)
+                    .store_coins(1)
+                    .store_uint(0, 1)
+                    .end_cell()
+            );
+    send_raw_message(msg.end_cell(), 1); ;; paying fees, revert on errors
+}
+
+() mint_reward(slice recipient, int amount, slice REWARD_MASTER_ADDRESS) impure inline {
+    if (amount == 0) {
+        return ();
+    }
+
+    var msg = begin_cell()
+            .store_uint(0x10, 6)
+            .store_slice(REWARD_MASTER_ADDRESS)
+            .store_coins(20000000) ;; 0.02 TON for gas
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(op::mint(), 32)
+            .store_uint(0, 64)
+            .store_slice(recipient)
+            .store_coins(20000000) ;; 0.02 TON for gas
+            .store_ref(
+                    begin_cell()
+                            .store_uint(op::internal_transfer(), 32)
+                            .store_uint(0, 64)
+                            .store_coins(amount)
+                            .store_slice(REWARD_MASTER_ADDRESS)
+                            .store_slice(recipient)
+                            .store_coins(1)
+                            .store_uint(0, 1)
+                            .end_cell()
+            );
+
+    send_raw_message(msg.end_cell(), 2); ;; paying fees, don't revert on errors
+}
+
+slice calculate_user_jetton_wallet_address(slice owner_address, slice jetton_master_address, cell jetton_wallet_code) inline {
+    cell state_init = begin_cell()
+        .store_uint(0, 2)
+        .store_dict(jetton_wallet_code)
+        .store_dict(
+            begin_cell()
+                .store_slice(owner_address)
+                .store_slice(jetton_master_address)
+            .end_cell()
+        )
+        .store_uint(0, 1)
+    .end_cell();
+
+    return begin_cell()
+        .store_uint(4, 3)
+        .store_int(workchain(), 8)
+        .store_uint(cell_hash(state_init), 256)
+    .end_cell()
+    .begin_parse();
+}

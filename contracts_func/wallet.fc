@@ -1,0 +1,139 @@
+;; ./contracts/wallet.fc
+
+;; ./contracts/wallet.fc
+
+#pragma version >=0.2.0;
+
+#include "import_libs/stdlib.fc";
+#include "import_libs/op-codes.fc";
+
+global int balance;              ;; Wallet's current balance
+global slice owner_address;      ;; Owner address of the wallet
+global cell channels;            ;; Stores channel data
+
+;; Constants for operations
+const int MSG_CREATE_CHANNEL = 0x01;
+const int MSG_CLOSE_CHANNEL = 0x02;
+
+;; ===========================================================
+;; 1. Data Persistence
+;; ===========================================================
+
+;; Function to load the current state data from persistent storage
+() load_data() inline_ref {
+    var ds = get_data().begin_parse();
+    balance = ds~load_coins();
+    owner_address = ds~load_msg_addr();
+    channels = ds~load_dict();
+    ds.end_parse();
+}
+
+;; Save the updated state data to persistent storage
+() save_data() impure inline_ref {
+    set_data(begin_cell()
+        .store_coins(balance)
+        .store_slice(owner_address)
+        .store_dict(channels)
+        .end_cell());
+}
+
+;; ===========================================================
+;; 2. Channel Operations
+;; ===========================================================
+
+;; Function to create a new channel
+() create_channel(slice counterparty, int init_balance) impure inline_ref {
+    ;; Create the channel state
+    cell state_init = begin_cell()
+        .store_uint(0, 2)  ;; split_depth
+        .store_dict(channels)  ;; special
+        .store_uint(0, 1)  ;; code
+        .store_uint(0, 1)  ;; data
+        .store_uint(0, 1)  ;; library
+        .end_cell();
+    slice channel_address = begin_cell().store_uint(4, 3)  ;; addr_std$10 + anycast = 0
+        .store_int(0, 8)  ;; workchain_id
+        .store_uint(cell_hash(state_init), 256)  ;; address
+        .end_cell()
+        .begin_parse();
+    
+    ;; Update the channel state
+    int channel_id = now();  ;; Use current timestamp as a unique identifier
+    save_data();
+}
+
+;; Function to close a channel
+() close_channel(slice channel_address, int final_balance) impure inline_ref {    
+    ;; Verify the channel exists and is ready to be closed
+    ;; In real implementation, this would involve a check against the channel's state in the on-chain intermediate contract
+    
+    ;; Transfer the final balances to the appropriate parties
+    var msg = begin_cell()
+        .store_uint(0x10, 6) ;; nobounce - internal message (no bounce) ihr_disabled:Bool bounce:Bool bounced:Bool src:MsgAddress -> 011000
+        .store_slice(channel_address) ;; Address of the channel to close
+        .store_coins(0) ;; No additional coins transferred
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1) ;; Message header with various flags
+        .store_uint(op::close_channel, 32) ;; Unique op code for closing the channel
+        .store_uint(final_balance, 64) ;; Final balance to be transferred
+        .end_cell();
+    
+    ;; Send the message to close the channel and transfer the amount
+    send_raw_message(msg, 64); ;; mode 64 ensures no balance is deducted from this contract
+}
+
+;; ===========================================================
+;; 3. Internal Message Handling
+;; ===========================================================
+
+;; Function to handle incoming messages
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure inline_ref {
+    load_data();
+    
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) { ;; ignore all bounced messages
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+    
+    if (in_msg_body.slice_empty?()) {
+        ;; Simple transfer, just accept the funds
+        balance += msg_value;
+        save_data();
+        return ();
+    }
+    
+    int op = in_msg_body~load_uint(32);
+    if (op == MSG_CREATE_CHANNEL) { ;; Create channel
+        throw_unless(401, equal_slices(sender_address, owner_address));
+        int channel_id = in_msg_body~load_uint(64);
+        int initial_balance = in_msg_body~load_coins();
+        slice counterparty = in_msg_body~load_msg_addr();
+        
+        throw_if(300, initial_balance > balance);
+        
+        cell channel_data = begin_cell()
+            .store_coins(initial_balance)
+            .store_slice(counterparty)
+            .end_cell();
+        
+        channels~udict_set_ref(64, channel_id, channel_data);
+        balance -= initial_balance;
+        
+        save_data();
+    } elseif (op == MSG_CLOSE_CHANNEL) { ;; Close channel
+        throw_unless(401, equal_slices(sender_address, owner_address));
+        int channel_id = in_msg_body~load_uint(64);
+        int final_balance = in_msg_body~load_coins();
+        
+        (slice channel_data, int success) = channels.udict_get?(64, channel_id);
+        throw_unless(301, success);
+        
+        channels~udict_delete?(64, channel_id);
+        balance += final_balance;
+        
+        save_data();
+    } else {
+        throw(402); ;; Unknown operation
+    }
+}

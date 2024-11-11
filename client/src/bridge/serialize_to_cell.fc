@@ -1,0 +1,55 @@
+#pragma version >=0.2.0;
+
+() dump_tup(tuple t) impure asm "DUMP" "DROP";  ;; Utility for debugging
+
+;; Helper functions for tuple access
+forall X -> X tuple_get(tuple t, int index) asm "INDEXVAR";
+forall X -> (tuple, ()) ~tuple_set(tuple t, int index, X value) asm "SETINDEXVAR";
+int tuple_length(tuple t) asm "TLEN";
+int is_null(cell c) asm "ISNULL";
+
+;; Function to serialize a transaction into a cell
+cell serialize_transaction(tuple transaction) {
+    ;; Begin building the cell
+    builder b = begin_cell();
+
+    ;; Extract values from tuple using tuple_get
+    int id = tuple_get(transaction, 0);           ;; transaction.id
+    int op = tuple_get(transaction, 1);           ;; transaction.op
+    int channel_id = tuple_get(transaction, 2);   ;; transaction.channel_id
+    slice sender = tuple_get(transaction, 3);     ;; transaction.sender
+    slice recipient = tuple_get(transaction, 4);  ;; transaction.recipient
+    int amount = tuple_get(transaction, 5);       ;; transaction.amount
+    int nonce = tuple_get(transaction, 6);        ;; transaction.nonce
+    int seqno = tuple_get(transaction, 7);        ;; transaction.seqno
+    int timestamp = tuple_get(transaction, 8);    ;; transaction.timestamp
+    slice signature = tuple_get(transaction, 9);  ;; transaction.signature
+    int status = tuple_get(transaction, 10);      ;; transaction.status
+    int merkle_root = tuple_get(transaction, 11); ;; transaction.merkle_root
+    cell payload = tuple_get(transaction, 12);    ;; Optional payload
+
+    ;; Store data in the builder
+    b = store_uint(b, id, 256);          ;; Store transaction.id
+    b = store_uint(b, op, 8);            ;; Store transaction.op
+    b = store_uint(b, channel_id, 64);   ;; Store transaction.channel_id
+    b = store_slice(b, sender);          ;; Store transaction.sender
+    b = store_slice(b, recipient);       ;; Store transaction.recipient
+    b = store_coins(b, amount);          ;; Store transaction.amount
+    b = store_uint(b, nonce, 64);        ;; Store transaction.nonce
+    b = store_uint(b, seqno, 64);        ;; Store transaction.seqno
+    b = store_uint(b, timestamp, 64);    ;; Store transaction.timestamp
+    b = store_slice(b, signature);       ;; Store transaction.signature
+    b = store_uint(b, status, 8);        ;; Store transaction.status
+    b = store_uint(b, merkle_root, 256); ;; Store transaction.merkle_root
+
+    ;; Handle the optional payload
+    if (~ is_null(payload)) {
+        b = store_uint(b, 1, 1);         ;; Indicate presence of payload
+        b = store_ref(b, payload);       ;; Store the payload if not null
+    } else {
+        b = store_uint(b, 0, 1);         ;; Indicate absence of payload
+    }
+
+    ;; Finish building the cell and return
+    return end_cell(b);
+}

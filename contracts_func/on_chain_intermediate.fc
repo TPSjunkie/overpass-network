@@ -1,0 +1,84 @@
+;; ./contracts_func/on_chain_intermediate.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/op-codes.fc";
+#include "./import_libs/stdlib.fc";
+
+const int op::update_state = 1;
+const int op::adjust_balance = 2;
+
+;; ===========================================================
+;; 1. Load and Save Data
+;; ===========================================================
+
+;; Function to load the current state data from persistent storage
+(cell, cell) load_data() inline {
+    var ds = get_data().begin_parse();
+    return (ds~load_dict(), ds~load_dict()); ;; Load state hashes and channel balances
+}
+
+;; Function to save updated state data to persistent storage
+() save_data(cell state_hashes, cell channel_balances) impure inline {
+    set_data(begin_cell()
+        .store_dict(state_hashes)
+        .store_dict(channel_balances)
+        .end_cell());
+}
+
+;; ===========================================================
+;; 4. Handle Internal Messages
+;; ===========================================================
+
+;; Handles internal messages
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure inline_ref {    
+    if (in_msg_body.slice_empty?()) { return (); }
+
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) { return (); } ;; Ignore bounced messages
+    slice sender_address = cs~load_msg_addr();
+    
+    int op = in_msg_body~load_uint(32);
+    
+    (cell state_hashes, cell channel_balances) = load_data();
+    
+    if (op == op::update_state) {
+        ;; Updates the state hash for a specific channel
+        int channel_id = in_msg_body~load_uint(32);
+        slice new_state_hash = in_msg_body~load_bits(256);
+        
+        ;; Update the state hash
+        state_hashes~udict_set(32, channel_id, new_state_hash);
+    }
+    elseif (op == op::adjust_balance) {
+        ;; Adjust the balance for a channel based on off-chain computation
+        int channel_id = in_msg_body~load_uint(32);
+        int new_balance = in_msg_body~load_coins();
+        
+        ;; Update the channel's balance
+        channel_balances~udict_set(32, channel_id, begin_cell().store_coins(new_balance).end_cell().begin_parse());
+    }
+    
+    ;; Save the updated state data back to persistent storage
+    save_data(state_hashes, channel_balances);
+}
+
+;; ===========================================================
+;; 5. Get Methods
+;; ===========================================================
+
+;; Method to get channel information (state hash and balance) for a given channel_id
+(int, int) get_channel_info(int channel_id) method_id {
+    (cell state_hashes, cell channel_balances) = load_data();
+    
+    ;; Retrieve the state hash and balance for the specified channel
+    (slice hash, int found1?) = state_hashes.udict_get?(32, channel_id);
+    (slice balance_slice, int found2?) = channel_balances.udict_get?(32, channel_id);
+    
+    ;; Return the state hash and balance if found, otherwise return 0
+    return (
+        found1? ? hash.preload_uint(256) : 0,
+        found2? ? balance_slice.preload_uint(64) : 0
+    );
+}

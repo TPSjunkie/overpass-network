@@ -1,0 +1,62 @@
+;;------------------------------------------------------------------------------
+;;  main.fc: Main entry point for Overpass smart contracts
+;;  Handles incoming messages and routes them to appropriate handlers
+;;------------------------------------------------------------------------------
+
+;; Import required dependencies
+#include "./basic.fc";        ;; Basic definitions and utilities
+#include "./serialize_smp.fc"; ;; Message serialization/deserialization functions
+
+;;------------------------------------------------------------------------------
+;; @notice Processes all incoming messages and routes them to appropriate handlers
+;; @param msg_slice Incoming message data as TVM slice
+;;------------------------------------------------------------------------------
+() handle_incoming(slice msg_slice) {
+  ;; Extract message type and payload from the incoming message
+  (int msg_type, cell payload) = deserialize_message(msg_slice);
+    
+  ;; Route message to appropriate handler based on operation code
+  ;; Each operation corresponds to a specific contract functionality
+    
+  if (msg_type == OP_CREATE_CHILD_CONTRACT) {
+      ;; Creates a new child contract instance
+      create_child_contract(payload);
+  } 
+  elseif (msg_type == OP_EXECUTE_CONTRACT) {
+      ;; Executes operations on existing contract
+      execute_contract(payload);
+  } 
+  elseif (msg_type == OP_UPDATE_STATE) {
+      ;; Updates contract state variables
+      update_state(payload);
+  } 
+  elseif (msg_type == OP_TRANSFER_FUNDS) {
+      ;; Handles fund transfers between contracts
+      transfer_funds(payload);
+  } 
+  elseif (msg_type == OP_SEND_MESSAGE) {
+      ;; Sends messages to other contracts
+      send_message(payload);
+  } 
+  elseif (msg_type == OP_CREATE_CHANNEL) {
+      ;; Initializes new payment/state channel
+      create_channel(payload);
+  } 
+  elseif (msg_type == OP_CLOSE_CHANNEL) {
+      ;; Closes existing payment/state channel
+      close_channel(payload);
+  } 
+  elseif (msg_type == OP_UPDATE_CHANNEL) {
+      ;; Updates state of existing channel
+      update_channel(payload);
+  } 
+  else {
+      ;; Invalid or unsupported operation code
+      ;; Message is rejected and no action is taken
+      ;; Consider adding logging or error reporting here
+  }
+}
+;; External function to receive messages
+() recv_external(slice msg_slice) {
+  handle_incoming(msg_slice);
+}

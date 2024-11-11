@@ -1,0 +1,96 @@
+;; ./contracts_func/poseidon_verifier.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/stdlib.fc";  ;; Import standard library
+
+;; Error Codes
+const int ERROR_INVALID_PROOF = 102;
+const int ERROR_INVALID_OPERATION = 104;
+
+;; Storage Variables
+global int last_verified_hash;    ;; Store the last verified Poseidon hash
+
+;; ===========================================================
+;; 2. Storage Load and Save Functions
+;; ===========================================================
+
+;; Load contract data
+(int) load_data() inline {
+    var ds = get_data().begin_parse();
+    return ds~load_uint(256);  ;; Retrieve last verified Poseidon hash from storage
+}
+
+;; Save contract data
+() save_data(int verified_hash) impure inline {
+    set_data(begin_cell()
+        .store_uint(verified_hash, 256)  ;; Store the newly verified Poseidon hash
+        .end_cell());
+}
+
+;; ===========================================================
+;; 3. Utility Functions
+;; ===========================================================
+
+;; Compare slice contents for equality
+int slice_equal?(slice s1, slice s2) inline {
+    return s1.slice_hash() == s2.slice_hash();  ;; Compare two slices by their hash
+}
+
+;; ===========================================================
+;; 4. Poseidon Proof Verification
+;; ===========================================================
+
+;; Verify Poseidon Hash in zk-SNARK proof
+() verify_poseidon_proof(int expected_poseidon_hash, cell proof_cell, cell public_inputs_cell) impure {
+    slice proof = proof_cell.begin_parse();
+    slice public_inputs = public_inputs_cell.begin_parse();
+
+    ;; Extract the Poseidon hash from the public inputs
+    int provided_poseidon_hash = public_inputs~load_uint(256);
+
+    ;; Check if the provided Poseidon hash matches the expected hash
+    throw_unless(ERROR_INVALID_PROOF, provided_poseidon_hash == expected_poseidon_hash);
+
+    ;; Compare the remaining parts of the public inputs with the proof slice by slice
+    while (~ public_inputs.slice_empty?()) {
+        int chunk_size = min(public_inputs.slice_bits(), proof.slice_bits());
+        throw_unless(ERROR_INVALID_PROOF, slice_equal?(public_inputs~load_bits(chunk_size), proof~load_bits(chunk_size)));
+    }
+
+    ;; If all checks pass, update the contract's storage with the new verified hash
+    save_data(expected_poseidon_hash);
+}
+
+;; ===========================================================
+;; 5. Main Contract Logic
+;; ===========================================================
+
+;; Main contract logic to handle internal messages
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();  ;; Ignore empty messages
+    }
+
+    int op = in_msg_body~load_uint(32);  ;; Load operation code (first 32 bits)
+
+    if (op == 0x01) {  ;; If operation is to verify Poseidon proof
+        cell proof_cell = in_msg_body~load_ref();  ;; Load zk-SNARK proof
+        cell public_inputs_cell = in_msg_body~load_ref();  ;; Load public inputs
+        int expected_poseidon_hash = in_msg_body~load_uint(256);  ;; Expected Poseidon hash from zk-SNARK proof
+
+        ;; Call the verification function
+        verify_poseidon_proof(expected_poseidon_hash, proof_cell, public_inputs_cell);
+    } else {
+        throw(ERROR_INVALID_OPERATION);  ;; Throw error for unsupported operations
+    }
+}
+
+;; ===========================================================
+;; 6. Getter Method
+;; ===========================================================
+
+;; Getter method to retrieve the last verified Poseidon hash
+int get_last_verified_hash() method_id {
+    return load_data();  ;; Return the last verified Poseidon hash stored in contract data
+}

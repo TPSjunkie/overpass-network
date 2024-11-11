@@ -1,0 +1,43 @@
+;; Transfer funds between participants
+() transfer_funds(slice payload) impure {
+  ;; Deserialize payload to get transaction details
+  (int op, int nonce, int amount, slice sender, slice recipient, slice merkle_root, int timestamp, int id) = deserialize_transaction(payload);
+  
+  ;; Verify transaction
+  if (op != OP_TRANSFER_FUNDS) {
+    return ();
+  }
+  
+  ;; Load current contract state
+  var stored_state = get_data();
+  (int balance, int seqno, int last_tx_lt, int last_tx_hash) = deserialize_contract_state(stored_state);
+  
+  ;; Verify nonce and balance
+  if ((nonce != seqno + 1) | (balance < amount)) {
+    return ();
+  }
+  
+  ;; Update balances
+  balance -= amount;
+  seqno += 1;
+  last_tx_lt = timestamp;
+  last_tx_hash = id;
+  
+  ;; Serialize and store updated state
+  var updated_state = serialize_contract_state(balance, seqno, last_tx_lt, last_tx_hash);
+  set_data(updated_state);
+  
+  ;; Create a message to the recipient
+  var msg = begin_cell()
+    .store_uint(OP_TRANSFER_FUNDS, 32)
+    .store_slice(sender)
+    .store_slice(recipient)
+    .store_coins(amount)
+    .store_slice(merkle_root)
+    .end_cell();
+  
+  ;; Send the message
+  send_raw_message(msg, 0);
+  
+  return ();
+}

@@ -1,0 +1,124 @@
+{
+  "compilerOptions": {
+    // Language and Environment
+    "target": "ESNext",
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext",
+      "WebWorker",
+      "WebWorker.ImportScripts"
+    ],
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Modules
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "~/*": ["./src/*"],
+      "@ton/*": ["./node_modules/@ton/*"],
+      "@wasm/*": ["./src/wasm/*"],
+      "@components/*": ["./src/components/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@types/*": ["./src/types/*"]
+    },
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+
+    // JavaScript Support
+    "allowJs": true,
+    "checkJs": false,
+
+    // Type Checking
+    "strict": true,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    // Emit
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "importHelpers": true,
+    "sourceMap": true,
+    "inlineSources": true,
+
+    // Interop Constraints
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    // Projects
+    "incremental": true,
+    "composite": false,
+    "tsBuildInfoFile": "./node_modules/.cache/.tsbuildinfo",
+
+    // Type Acquisition
+    "types": [
+      "node",
+      "vite/client",
+      "react",
+      "react-dom",
+      "jest"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.mts",
+    "*.mts",
+    "*.cts",
+    "src/types/**/*.d.ts",
+    "src/**/*.d.ts",
+    "src/declarations.d.ts",
+    "src/wasm-env.d.ts",
+    "src/vite-env.d.ts",
+    "vite.config.ts",
+    "tailwind.config.cjs",
+    "postcss.config.cjs"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.spec.tsx",
+    "**/*.test.tsx",
+    ".history"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ],
+  "ts-node": {
+    "transpileOnly": true,
+    "compilerOptions": {
+      "module": "CommonJS"
+    }
+  }
+}
+

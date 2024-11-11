@@ -1,0 +1,15 @@
+;; Send a message to another contract
+() send_message(slice payload) {
+  ;; Deserialize payload to get message details
+  (int msg_type, slice recipient, slice message) = deserialize_message(payload);
+  
+  ;; Verify message
+  if (msg_type != OP_SEND_MESSAGE) {
+    return ();
+  }
+  
+  ;; Send the message to the recipient
+  send_raw_message(recipient, 0, message);
+  
+  return ();
+}

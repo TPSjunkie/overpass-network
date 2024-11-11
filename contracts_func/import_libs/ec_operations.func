@@ -1,0 +1,151 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+#include "math.fc";
+
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    ;; This contract doesn't handle incoming messages
+    return ();
+}
+
+;; Modular addition
+int mod_add(int a, int b, int m) inline {
+    return (a + b) % m;
+}
+
+;; Modular subtraction
+int mod_sub(int a, int b, int m) inline {
+    return (a - b + m) % m;
+}
+
+;; Modular multiplication
+int mod_mul(int a, int b, int m) inline {
+    return (a * b) % m;
+}
+
+;; Modular exponentiation
+int mod_pow(int base, int exp, int m) inline {
+    if (exp == 0) {
+        return 1;
+    }
+    int result = 1;
+    base = base % m;
+    while (exp > 0) {
+        if (exp % 2 == 1) {
+            result = mod_mul(result, base, m);
+        }
+        base = mod_mul(base, base, m);
+        exp = exp / 2;
+    }
+    return result;
+}
+
+;; Modular inverse
+int mod_inv(int a, int m) inline {
+    int t = 0;
+    int new_t = 1;
+    int r = m;
+    int new_r = a;
+    
+    while (new_r != 0) {
+        int quotient = r / new_r;
+        (t, new_t) = (new_t, t - quotient * new_t);
+        (r, new_r) = (new_r, r - quotient * new_r);
+    }
+    
+    if (r > 1) {
+        return 0; ;; Modular inverse doesn't exist
+    }
+    if (t < 0) {
+        t += m;
+    }
+    return t;
+}
+
+;; Point addition on elliptic curve y^2 = x^3 + ax + b
+(int, int) ec_add(int x1, int y1, int x2, int y2, int a, int p) inline {
+    ;; Check if either point is the point at infinity (represented by (0, 0))
+    if ((x1 == 0) & (y1 == 0)) {
+        return (x2, y2);
+    }
+    if ((x2 == 0) & (y2 == 0)) {
+        return (x1, y1);
+    }
+    
+    int m = 0;
+    if ((x1 == x2) & (y1 == y2)) {
+        ;; Point doubling
+        ;; m = (3x1^2 + a) / (2y1) mod p
+        m = mod_mul(mod_add(mod_mul(3, mod_mul(x1, x1, p), p), a, p),
+                    mod_inv(mod_mul(2, y1, p), p),
+                    p);
+    } else {
+        ;; Point addition
+        ;; m = (y2 - y1) / (x2 - x1) mod p
+        m = mod_mul(mod_sub(y2, y1, p),
+                    mod_inv(mod_sub(x2, x1, p), p),
+                    p);
+    }
+    
+    ;; Calculate new point (x3, y3)
+    ;; x3 = m^2 - x1 - x2 mod p
+    ;; y3 = m(x1 - x3) - y1 mod p
+    int x3 = mod_sub(mod_sub(mod_mul(m, m, p), x1, p), x2, p);
+    int y3 = mod_sub(mod_mul(m, mod_sub(x1, x3, p), p), y1, p);
+    
+    return (x3, y3);
+}
+
+;; Scalar multiplication on elliptic curve
+(int, int) ec_mul(int k, int x, int y, int a, int p) inline {
+    if (k == 0) {
+        return (0, 0);
+    }
+    
+    int rx = 0;
+    int ry = 0;
+    int tx = x;
+    int ty = y;
+    
+    while (k > 0) {
+        if (k % 2 == 1) {
+            (rx, ry) = ec_add(rx, ry, tx, ty, a, p);
+        }
+        (tx, ty) = ec_add(tx, ty, tx, ty, a, p);
+        k = k / 2;
+    }
+    
+    return (rx, ry);
+}
+
+;; ECDSA signature generation (simplified)
+(int, int) ecdsa_sign(int private_key, int message_hash, int k, int n, int G_x, int G_y, int a, int p) inline {
+    (int r_x, int r_y) = ec_mul(k, G_x, G_y, a, p);
+    int r = r_x % n;
+    if (r == 0) {
+        return (0, 0); ;; Invalid k, should choose another one
+    }
+    
+    int s = mod_mul(mod_inv(k, n), mod_add(message_hash, mod_mul(private_key, r, n), n), n);
+    if (s == 0) {
+        return (0, 0); ;; Invalid k, should choose another one
+    }
+    
+    return (r, s);
+}
+
+;; ECDSA signature verification (simplified)
+int ecdsa_verify(int public_key_x, int public_key_y, int message_hash, int r, int s, int n, int G_x, int G_y, int a, int p) inline {
+    if ((r < 1) | (r > n - 1) | (s < 1) | (s > n - 1)) {
+        return 0; ;; Invalid signature
+    }
+    
+    int w = mod_inv(s, n);
+    int u1 = mod_mul(message_hash, w, n);
+    int u2 = mod_mul(r, w, n);
+    
+    (int x1, int y1) = ec_mul(u1, G_x, G_y, a, p);
+    (int x2, int y2) = ec_mul(u2, public_key_x, public_key_y, a, p);
+    (int x, int y) = ec_add(x1, y1, x2, y2, a, p);
+    
+    return x % n == r;
+}

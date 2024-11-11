@@ -1,0 +1,27 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+    - name: Build Project
+      run: cargo build --release
+    - name: Deploy to Server
+      uses: easingthemes/ssh-deploy@v2.1.5
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        remote-user: ${{ secrets.REMOTE_USER }}
+        server-ip: ${{ secrets.SERVER_IP }}
+        remote-path: /path/to/deploy
+        local-path: target/release/

@@ -1,0 +1,136 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+#include "storage.fc";
+
+const int MERKLE_TREE_HEIGHT = 32;
+const int FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    
+    int op = in_msg_body~load_uint(32);
+    
+    if (op == op::deposit()) {
+        int commitment = in_msg_body~load_uint(256);
+        (int index, _) = insert(commitment);
+        ;; Emit deposit event
+    } elseif (op == op::withdraw()) {
+        int nullifier_hash = in_msg_body~load_uint(256);
+        int root = in_msg_body~load_uint(256);
+        cell proof = in_msg_body~load_ref();
+        
+        throw_unless(error::verify_failed_root(), is_known_root(root));
+        throw_unless(error::verify_failed_double_spend(), is_unknown_nullifier(nullifier_hash, nullifiers));
+        
+        int is_valid = verify_proof(proof, nullifier_hash, root);
+        throw_unless(error::verify_failed(), is_valid);
+        
+        nullifiers~udict_set(256, nullifier_hash, begin_cell().end_cell());
+        ;; Process withdrawal
+    }
+}
+
+(int, cell) insert(int commitment) impure inline {
+    (int current_root, int index, cell tree, int tree_size) = unpack_merkle_data(merkle_tree);
+    
+    throw_unless(error::verify_failed_input(), commitment < FIELD_SIZE);
+    
+    int leaf = hash_leaf(commitment);
+    (tree, int inserted) = tree_insert(tree, index, leaf, MERKLE_TREE_HEIGHT);
+    throw_unless(error::verify_failed_input(), inserted);
+    
+    current_root = compute_root(tree, MERKLE_TREE_HEIGHT);
+    index += 1;
+    tree_size += 1;
+    
+    cell new_merkle_tree = pack_merkle_data(current_root, index, tree, tree_size);
+    return (index, new_merkle_tree);
+}
+
+int verify_proof(cell proof, int leaf, int root) inline {
+    slice proof_slice = proof.begin_parse();
+    int computed_root = leaf;
+    
+    repeat (MERKLE_TREE_HEIGHT) {
+        int direction = proof_slice~load_uint(1);
+        int sibling = proof_slice~load_uint(256);
+        
+        if (direction == 0) {
+            computed_root = hash_node(computed_root, sibling);
+        } else {
+            computed_root = hash_node(sibling, computed_root);
+        }
+    }
+    
+    return computed_root == root;
+}
+
+int hash_leaf(int value) inline {
+    return cell_hash(begin_cell().store_uint(value, 256).end_cell());
+}
+
+int hash_node(int left, int right) inline {
+    return cell_hash(begin_cell().store_uint(left, 256).store_uint(right, 256).end_cell());
+}
+
+(cell, int) tree_insert(cell tree, int index, int leaf, int height) inline {
+    if (height == 0) {
+        return (begin_cell().store_uint(leaf, 256).end_cell(), true);
+    }
+    
+    int slice_bits = (height - 1) * 2 + 256;
+    if (slice_bits > 1023) {
+        slice left_slice = tree.begin_parse();
+        cell right_cell = left_slice~load_ref();
+        int left_hash = left_slice~load_uint(256);
+        
+        int direction = index >> (height - 1);
+        if (direction == 0) {
+            (cell new_left, int inserted) = tree_insert(left_slice.preload_ref(), index, leaf, height - 1);
+            if (inserted) {
+                left_hash = compute_root(new_left, height - 1);
+            }
+            return (begin_cell().store_uint(left_hash, 256).store_ref(new_left).store_ref(right_cell).end_cell(), inserted);
+        } else {
+            (cell new_right, int inserted) = tree_insert(right_cell, index, leaf, height - 1);
+            if (inserted) {
+                int right_hash = compute_root(new_right, height - 1);
+                return (begin_cell().store_uint(left_hash, 256).store_ref(left_slice.preload_ref()).store_ref(new_right).end_cell(), inserted);
+            }
+            return (tree, inserted);
+        }
+    } else {
+        slice tree_slice = tree.begin_parse();
+        int left_hash = tree_slice~load_uint(256);
+        int right_hash = tree_slice~load_uint(256);
+        
+        int direction = index >> (height - 1);
+        if (direction == 0) {
+            (cell new_left, int inserted) = tree_insert(tree_slice~load_ref(), index, leaf, height - 1);
+            if (inserted) {
+                left_hash = compute_root(new_left, height - 1);
+            }
+            return (begin_cell().store_uint(left_hash, 256).store_uint(right_hash, 256).store_ref(new_left).store_ref(tree_slice.preload_ref()).end_cell(), inserted);
+        } else {
+            (cell new_right, int inserted) = tree_insert(tree_slice.preload_ref(), index, leaf, height - 1);
+            if (inserted) {
+                right_hash = compute_root(new_right, height - 1);
+            }
+            return (begin_cell().store_uint(left_hash, 256).store_uint(right_hash, 256).store_ref(tree_slice~load_ref()).store_ref(new_right).end_cell(), inserted);
+        }
+    }
+}
+
+int compute_root(cell tree, int height) inline {
+    if (height == 0) {
+        return tree.begin_parse().preload_uint(256);
+    }
+    
+    slice tree_slice = tree.begin_parse();
+    int left_hash = tree_slice~load_uint(256);
+    int right_hash = tree_slice~load_uint(256);
+    
+    return hash_node(left_hash, right_hash);
+}

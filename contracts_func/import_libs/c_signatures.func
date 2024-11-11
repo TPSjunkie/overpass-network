@@ -1,0 +1,38 @@
+#include "stdlib.fc";
+#include "params.fc";
+#include "math.fc";
+;; =====================================================================================================================================================================================================================================================================================================================================================================================================================================================================================                                                                      
+;; ==================================================================================================================================================================================================================================================================================================================================================================================================================
+
+
+;; File Path: /modules/ec_signatures.func
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    ;; Implementation of recv_internal
+}
+
+() recv_external(slice in_msg) impure {
+    ;; Implementation of recv_external
+}
+
+;; Signs a message hash using the private key
+(int, int) sign(int message_hash, int private_key) inline_ref {
+    int k = 1; ;; Replace this with a secure random number generator
+    (int xr, int yr) = ec_operations::ecMul(k, curve_constants::curve_gx, curve_constants::curve_gy, curve_constants::curve_a, curve_constants::curve_p);
+    int r = xr % curve_constants::curve_n;
+    int s = mod_arith::mulmod(mod_arith::invMod(k, curve_constants::curve_n), message_hash + r * private_key, curve_constants::curve_n);
+    return (r, s);
+}
+
+;; Verifies a signature
+int verify(int message_hash, int r, int s, int pubx, int puby) inline_ref {
+    if ((r <= 0) | (r >= curve_constants::curve_n) | (s <= 0) | (s >= curve_constants::curve_n)) {
+        return 0;  ;; Invalid signature
+    }
+    int w = mod_arith::invMod(s, curve_constants::curve_n);
+    int u1 = mod_arith::mulmod(message_hash, w, curve_constants::curve_n);
+    int u2 = mod_arith::mulmod(r, w, curve_constants::curve_n);
+    (int x1, int y1) = ec_operations::ecMul(u1, curve_constants::curve_gx, curve_constants::curve_gy, curve_constants::curve_a, curve_constants::curve_p);
+    (int x2, int y2) = ec_operations::ecMul(u2, pubx, puby, curve_constants::curve_a, curve_constants::curve_p);
+    (int x3, _) = ec_operations::ecAdd(x1, y1, x2, y2, curve_constants::curve_a, curve_constants::curve_p);
+    return (x3 % curve_constants::curve_n == r);
+}

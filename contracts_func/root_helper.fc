@@ -1,0 +1,68 @@
+;; ./contracts/root_helper.fc
+
+#pragma version >=0.2.0;
+
+#include "import_libs/stdlib.fc";
+
+;; ===========================================================
+;; 1. Constants and Parameters
+;; ===========================================================
+
+;; Root Submission Contract Address (for interacting with the root submission contract)
+const int ROOT_SUBMISSION_CONTRACT_ADDR = 0x1234567890ABCDEF;
+
+;; ===========================================================
+;; Helper Submission Logic
+;; ===========================================================
+
+;; Operation codes
+int op_submit_global_root() asm "123456 PUSHINT";
+
+;; Helper function to convert address to slice
+slice to_slice(int address) inline {
+    return begin_cell().store_uint(2, 2).store_uint(0, 1).store_uint(address, 256).end_cell().begin_parse();
+}
+
+;; Function for submitting root via helper contract with additional checks
+() helper_submit_root(int new_root, int proof_valid) impure {
+    ;; Ensure proof validation (or other security checks)
+    throw_unless(3001, proof_valid);  ;; Proof is invalid
+
+    ;; Call the root submission contract's submit function
+    ;; Impure call to the root submission contract
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(to_slice(ROOT_SUBMISSION_CONTRACT_ADDR))
+        .store_coins(0)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(op_submit_global_root(), 32)
+        .store_uint(new_root, 256)
+        .end_cell();
+
+    send_raw_message(msg, 64);  ;; mode 64 to ignore errors
+}
+
+;; Main entry point
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    
+    int op = in_msg_body~load_uint(32);
+    
+    if (op == op_submit_global_root()) {
+        int new_root = in_msg_body~load_uint(256);
+        int proof_valid = in_msg_body~load_uint(1);
+        helper_submit_root(new_root, proof_valid);
+    } else {
+        throw(0xffff);  ;; Unknown operation
+    }
+}
+
+;; Get method for contract
+int get_root() method_id {
+    ;; Assuming we store the root in a persistent storage cell
+    cell root_cell = get_data();
+    slice root_slice = root_cell.begin_parse();
+    return root_slice~load_uint(256);
+}

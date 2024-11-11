@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Submit the merkle root
+./target/release/overpass-channels submit-merkle-root  --config ./config/config.toml  --chain-id=overpass-devnet-2 --keyring-backend=file --keyring-dir=/Users/cryptskii/keys --from=overpass --gas=auto --fees=1000uoverpass --broadcast-mode=block --yes --gas-prices=1000uoverpass --gas-adjustment=1.5 --node=https://rpc.testnet.overpass.wtf:443 --output ./output/submit_merkle_root.json  --chain-id=overpass-devnet-2 --keyring-backend=file --keyring-dir=/Users/cryptskii/keys --from=overpass --gas=auto --fees=1000uoverpass --broadcast-mode=block --yes --gas-prices=1000uoverpass --gas-adjustment=1.5 --node=https://rpc.testnet.overpass.wtf:443 --output ./output/submit_merkle_root.json    

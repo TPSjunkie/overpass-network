@@ -1,0 +1,65 @@
+{-
+  Create a child contract
+
+  This function creates a new child contract instance by sending a message to the parent contract.
+  Child contracts act as intermediaries between the wallet extension (parent which holds funds) and
+  the off-chain channels, which handle the actual payments. They communicate with
+  the transaction manager. They help facilitate:
+  - Communication between on-chain and off-chain channels
+  - Signature verification using Merkle proofs
+  - Virtual rebalancing of funds
+  - Channel grouping and on-chain verification
+-}
+
+;; Create a new child contract instance
+() create_child_contract(slice payload) impure {
+  ;; Implementation goes here
+}
+() create_child_contract(slice payload) impure {
+  ;; Deserialize payload to get child contract details
+  var (op, nonce, amount, sender, recipient, timestamp, id) = deserialize_contract_state_params(payload);
+  
+  ;; Verify contract state parameters
+  if (op != OP_CREATE_CHILD_CONTRACT) {
+    return ();
+  }
+  
+  ;; Load current contract state
+  cell stored_state = get_data();
+  var (seqno, balance) = unpack_state(stored_state);
+  
+  ;; Verify nonce and balance
+  if (nonce != seqno + 1) | (balance < amount) {
+    return ();
+  }
+  
+  ;; Create new child contract state
+  int new_seqno = seqno + 1;
+  int new_balance = balance - amount;
+  
+  ;; Serialize and store updated state
+  cell updated_state = pack_state(new_seqno, new_balance);
+  set_data(updated_state);
+  
+  ;; Create a message to the recipient
+  var msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(recipient)
+    .store_coins(amount)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_uint(OP_CREATE_CHILD_CONTRACT, 32)
+    .store_uint(nonce, 64)
+    .store_slice(sender)
+    .store_uint(timestamp, 64)
+    .store_uint(id, 256)
+    .end_cell();
+  
+  ;; Send the message
+  send_raw_message(msg, 1);
+};; Deserialize contract state parameters from a slice
+(ContractStateParams) deserialize_contract_state_params(slice payload) {
+  var (op, nonce, amount, sender, recipient, timestamp, id) = load_transaction(payload);
+  return (op, nonce, amount, sender, recipient, timestamp, id);
+}   
+
+

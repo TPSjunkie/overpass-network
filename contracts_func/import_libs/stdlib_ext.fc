@@ -1,0 +1,132 @@
+{-
+    stdlib_ext.fc
+
+    Additional functions that are not present in stdlib.fc
+-}
+(int) div(int x, int y) asm "DIV";
+(int) mod(int x, int y) asm "MOD";
+(int) divc(int x, int y) asm "DIVC";
+slice preload_bits_offset(slice s, int offset, int len) asm "SDSUBSTR";
+int builder_null?(builder b) asm "ISNULL";
+(slice, slice) load_slice_ref(slice s) asm "LDREFRTOS";
+forall X -> int to_int(X x) asm "NOP";
+(slice, int) load_bool(slice s) asm(-> 1 0) "1 LDI";
+(builder) store_bool(builder b, int v) asm(v b) "1 STI";
+slice addr_none() asm "<b b{00} s, b> <s PUSHSLICE";
+cell empty_cell() asm "<b b> PUSHREF";
+slice empty_slice() asm "<b b> <s PUSHSLICE";
+forall X -> tuple tset(tuple t, int k, X x) asm(t x k) "SETINDEXVAR";
+forall X -> (tuple, ()) ~tset(tuple t, int k, X x) asm(t x k) "SETINDEXVAR";
+forall X -> (tuple, X) tpop(tuple t) asm "TPOP";
+int tlen(tuple t) asm "TLEN";
+int tlenq(tuple t) asm "QTLEN";
+slice preload_slice_offset(slice s, int offset, int len) asm "SDSUBSTR";
+(slice, slice) load_slice(slice s, int len) asm( -> 1 0) "LDSLICEX";
+forall X -> tuple _unsafe_tuple(X x) asm "NOP";
+(slice) as_slice(builder b) asm "ENDC CTOS";
+(slice, int) load_time(slice s) asm "64 LDU SWAP";
+(builder) store_time(builder b, int t) inline asm(t b) "64 STU";
+(slice, int) load_uint8(slice s) asm "8 LDU SWAP";
+(builder) store_uint8(builder b, int t) inline asm(t b) "8 STU";
+(slice, int) load_uint16(slice s) asm "16 LDU SWAP";
+(builder) store_uint16(builder b, int t) inline asm(t b) "16 STU";
+(slice, int) load_uint32(slice s) asm "32 LDU SWAP";
+(builder) store_uint32(builder b, int t) inline asm(t b) "32 STU";
+(slice, int) load_uint64(slice s) asm "64 LDU SWAP";
+(builder) store_uint64(builder b, int t) inline asm(t b) "64 STU";
+(slice, int) load_uint128(slice s) asm "128 LDU SWAP";
+(builder) store_uint128(builder b, int t) inline asm(t b) "128 STU";
+(slice, int) load_uint256(slice s) asm "256 LDU SWAP";
+(builder) store_uint256(builder b, int t) inline asm(t b) "256 STU";
+(int) equal_cells(cell a, cell b) asm "HASHCU SWAP HASHCU EQUAL"; 
+(slice, int) load_opcode(slice s) asm "32 LDU SWAP";
+(builder) store_opcode(builder b, int t) inline asm(t b) "32 STU";
+(slice, int) load_query_id(slice s) asm "64 LDU SWAP";
+(builder) store_query_id(builder b, int t) inline asm(t b) "64 STU";
+forall X -> X ~strdump_safe_not_pretty(slice value) impure asm "STRDUMP";
+forall X -> X ~dump_safe(X value) impure asm "s0 DUMP";
+(builder) begin_message(int _opcode) asm "ctx GETGLOB 4 INDEX SWAP NEWC 32 STU 64 STU";
+(slice, int) load_status(slice s) asm "8 LDU SWAP";
+(builder) store_status(builder b, int t) inline asm(t b) "8 STU";
+(int) negate(int _n) asm "NEGATE";
+(int) sub1(int _n) asm "DEC";
+(int) add1(int _n) asm "INC";
+(int) sgn(int _n) asm "SGN";
+(int, ()) ~sub1(int _n) asm "DEC";
+(int, ()) ~add1(int _n) asm "INC";
+(int, ()) ~negate(int _n) asm "NEGATE";
+(int, ()) ~sgn(int _n) asm "SGN";
+
+() set_lib(cell code, int mode) impure asm "SETLIBCODE";
+() change_lib(int code_hash, int mode) impure asm "CHANGELIB";
+forall X -> int   is_null(X x) asm "ISNULL";
+forall X -> int   is_int(X x) asm "<{ TRY:<{ 0 PUSHINT ADD DROP -1 PUSHINT }>CATCH<{ 2DROP 0 PUSHINT }> }>CONT 1 1 CALLXARGS";
+forall X -> int   is_cell(X x) asm "<{ TRY:<{ CTOS DROP -1 PUSHINT }>CATCH<{ 2DROP 0 PUSHINT }> }>CONT 1 1 CALLXARGS";
+forall X -> int   is_slice(X x) asm "<{ TRY:<{ SBITS DROP -1 PUSHINT }>CATCH<{ 2DROP 0 PUSHINT }> }>CONT 1 1 CALLXARGS";
+forall X -> int   is_tuple(X x) asm "ISTUPLE";
+int               is_nan(int _n) asm "CHKNAN";
+forall X -> cell  cast_to_cell(X x) asm "NOP";
+forall X -> slice cast_to_slice(X x) asm "NOP";
+forall X -> int   cast_to_int(X x) asm "NOP";
+forall X -> tuple cast_to_tuple(X x) asm "NOP";
+
+;; TVM Upgrade 2023.07
+(cell) my_code() asm "MYCODE";
+(tuple) get_values() asm "INCOMINGVALUE";
+int storage_fees() asm "STORAGEFEES";
+(tuple) get_prev_block_info() asm "PREVBLOCKSINFOTUPLE";
+(tuple) get_last_mc_block() asm "PREVMCBLOCKS";
+(tuple) get_prev_key_block() asm "PREVKEYBLOCK";
+(int) get_global_id() asm "GLOBALID";
+(int) get_gas_consumed() asm "GASCONSUMED";
+(int) sha256_single(slice _t0) asm "1 PUSHINT HASHEXT_SHA256";
+(int) sha256_double(slice _t0, slice _t1) asm "2 PUSHINT HASHEXT_SHA256";
+(int) sha256_triple(slice _t0, slice _t1, slice _t2) asm "3 PUSHINT HASHEXT_SHA256";
+(int) sha512_single(slice _t0) asm "1 PUSHINT HASHEXT_SHA512";
+(int) sha512_double(slice _t0, slice _t1) asm "2 PUSHINT HASHEXT_SHA512";
+(int) sha512_triple(slice _t0, slice _t1, slice _t2) asm "3 PUSHINT HASHEXT_SHA512";
+(int) blake2b_single(slice _t0) asm "1 PUSHINT HASHEXT_BLAKE2B";
+(int) blake2b_double(slice _t0, slice _t1) asm "2 PUSHINT HASHEXT_BLAKE2B";
+(int) blake2b_triple(slice _t0, slice _t1, slice _t2) asm "3 PUSHINT HASHEXT_BLAKE2B";
+(int) keccack256_single(slice _t0) asm "1 PUSHINT HASHEXT_KECCAK256";
+(int) keccack256_double(slice _t0, slice _t1) asm "2 PUSHINT HASHEXT_KECCAK256";
+(int) keccack256_triple(slice _t0, slice _t1, slice _t2) asm "3 PUSHINT HASHEXT_KECCAK256";
+(int) keccack512_single(slice _t0) asm "1 PUSHINT HASHEXT_KECCAK512";
+(int) keccack512_double(slice _t0, slice _t1) asm "2 PUSHINT HASHEXT_KECCAK512";
+(int) keccack512_triple(slice _t0, slice _t1, slice _t2) asm "3 PUSHINT HASHEXT_KECCAK512";
+(int, int, int, int) ecrecover(int hash, int v, int r, int s) asm "ECRECOVER NULLSWAPIFNOT NULLSWAPIFNOT2";
+int send_message(cell msg, int mode) impure asm "SENDMSG";
+
+int get_compute_fee(int workchain, int gas_used) asm(gas_used workchain) "GETGASFEE";
+int get_storage_fee(int workchain, int seconds, int bits, int cells) asm(cells bits seconds workchain) "GETSTORAGEFEE";
+int get_forward_fee(int workchain, int bits, int cells) asm(cells bits workchain) "GETFORWARDFEE";
+int get_precompiled_gas_consumption() asm "GETPRECOMPILEDGAS";
+int get_simple_compute_fee(int workchain, int gas_used) asm(gas_used workchain) "GETGASFEESIMPLE";
+int get_simple_forward_fee(int workchain, int bits, int cells) asm(cells bits workchain) "GETFORWARDFEESIMPLE";
+int get_original_fwd_fee(int workchain, int fwd_fee) asm(fwd_fee workchain) "GETORIGINALFWDFEE";
+
+int my_storage_due() asm "DUEPAYMENT";
+tuple get_fee_cofigs() asm "UNPACKEDCONFIGTUPLE";
+
+(slice, ()) ~skip_maybe_ref(slice s) asm "SKIPOPTREF";
+
+int cell_level(cell c) asm "CLEVEL";
+int cell_level_mask(cell c) asm "CLEVELMASK";
+
+builder store_addr_none(builder b) asm "b{00} STSLICECONST";
+int is_bool(int x) asm "CHKBOOL";
+
+builder store_zeroes(builder b, int x) asm "STZEROES";
+builder store_ones(builder b, int x) asm "STONES";
+
+cell preload_first_ref(slice s) asm "0 PLDREFIDX";
+cell preload_second_ref(slice s) asm "1 PLDREFIDX";
+cell preload_third_ref(slice s) asm "2 PLDREFIDX";
+cell preload_fourth_ref(slice s) asm "3 PLDREFIDX";
+
+int get_ton_balance() asm "BALANCE FIRST";
+
+((int, int) -> ()) get_c2() asm "c2 PUSH";
+() set_c2(((int, int) -> ()) c) impure asm "c2 POP";
+() set_actions(cell actions) impure asm "c5 POP";
+() clean_actions() impure asm "<b b> PUSHREF c5 POP";

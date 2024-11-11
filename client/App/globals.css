@@ -1,0 +1,176 @@
+/* Global Styles */
+body {
+  font-family: 'Roboto', sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+:root {
+  --bg-light: #f0f0f0;
+  --text-light: #000000;
+  --bg-dark: #121212;
+  --text-dark: #ffffff;
+}
+
+.light {
+  --bg-color: var(--bg-light);
+  --text-color: var(--text-light);
+}
+
+.dark {
+  --bg-color: var(--bg-dark);
+  --text-color: var(--text-dark);
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
+
+/* Utility Classes */
+.bg-military-brown {
+  background-color: #4a3624;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.space-y-8 {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.rounded-lg {
+  border-radius: 0.5rem;
+}
+
+.text-xl {
+  font-size: 1.25rem;
+}
+
+.text-white {
+  color: white;
+}
+
+.min-h-screen {
+  min-height: 100vh;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.h-full {
+  height: 100%;
+}
+
+.bg-gameboy-bg {
+  background-image: url('/images/gameboy-bg.png');
+  background-size: cover;
+  background-position: center;
+}
+
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Logo Styles */
+.logo {
+  width: 120px;
+  height: auto;
+  margin-bottom: 2rem;
+}
+
+/* Carousel Styles */
+.carousel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+  background-color: var(--bg-color);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.carousel-item {
+  min-width: 100%;
+  transition: transform 0.3s ease-in-out;
+}
+
+.carousel-top, .carousel-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-item h2 {
+  color: var(--text-color);
+  font-size: 1.5rem;
+}
+
+/* Buttons */
+#ton-connect-button {
+  margin-top: 20px;
+  background-color: #1c1c1c;
+  padding: 10px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+}
+
+/* Channel List */
+.channel-list {
+  list-style: none;
+  padding: 0;
+}
+
+.channel-list-item {
+  padding: 10px;
+  margin: 5px 0;
+  background-color: #333;
+  color: #fff;
+  border-radius: 5px;
+}
+
+.channel-list-item:hover {
+  background-color: #444;
+  cursor: pointer;
+}
+
+/* Transaction History */
+.transaction-history {
+  background-color: var(--bg-color);
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  margin: 5px 0;
+  background-color: #555;
+  color: #fff;
+  border-radius: 5px;
+}
+
+.transaction-item:hover {
+  background-color: #666;
+}

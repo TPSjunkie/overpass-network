@@ -1,0 +1,38 @@
+name: Rust CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install wasm-pack
+      run: cargo install wasm-pack
+
+    - name: Build project
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+
+    - name: Lint code
+      run: cargo clippy -- -D warnings
+
+    - name: Format code
+      run: cargo fmt -- --check

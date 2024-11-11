@@ -1,0 +1,337 @@
+;; Transaction status codes and operation codes
+const int STATUS_PENDING = 0;
+const int STATUS_COMPLETED = 1;
+const int STATUS_FAILED = 2;
+const int STATUS_REJECTED = 3;
+
+const int OP_CREATE_CHILD_CONTRACT = 1;
+const int OP_EXECUTE_CONTRACT = 2;
+const int OP_UPDATE_STATE = 3;
+const int OP_TRANSFER_FUNDS = 4;
+const int OP_SEND_MESSAGE = 5;
+const int OP_CREATE_CHANNEL = 6;
+const int OP_CLOSE_CHANNEL = 7;
+const int OP_UPDATE_CHANNEL = 8;
+
+
+() create_transaction(int id, int op, int channel_id, slice sender,
+                      slice recipient, int amount, int nonce,
+                      int seqno, int signature, cell payload) impure {
+    throw_if(35, id == 0);
+    throw_if(36, channel_id == 0); 
+    throw_if(37, amount == 0);
+    throw_if(38, nonce == 0);
+    throw_if(39, signature == 0);
+    
+    cell transaction = begin_cell()
+        .store_uint(id, 256)
+        .store_int(op, 32)
+        .store_uint(channel_id, 64)
+        .store_slice(sender)
+        .store_slice(recipient)
+        .store_coins(amount)
+        .store_uint(nonce, 64)
+        .store_uint(seqno, 64)
+        .store_uint(now(), 64)
+        .store_uint(signature, 512)
+        .store_int(STATUS_PENDING, 32)
+        .store_uint(calculate_merkle_root(id, op, channel_id,
+                                          sender, recipient,
+                                          amount, nonce,
+                                          seqno), 256)
+        .store_maybe_ref(payload)
+        .end_cell();
+}
+
+(int) verify_transaction(cell tx) {
+    slice s = tx.begin_parse();
+    throw_if(40, s~load_uint(256) == 0); 
+    throw_if(41, s~load_uint(64) == 0); 
+    throw_if(42, s~load_coins() == 0); 
+    throw_if(43, s~load_uint(64) == 0); 
+    throw_if(44, s~load_uint(512) == 0); 
+
+    Load status for verification
+    s.skip_bits((256 + 32 + (2 * slice_bits()) + (2 * uint_bits()) +
+                 uint_bits() + uint_bits() + uint_bits()) - (32));
+    (_, status) = s.load_int(32);
+
+    throw_if(45, status == STATUS_FAILED);
+    throw_if(46, status == STATUS_REJECTED);
+}
+
+(cell) serialize_transaction(slice tx) inline {
+    return begin_cell()
+        .store_slice(tx)
+        .end_cell();
+}
+
+(slice) deserialize_transaction(cell c) {
+    return c.begin_parse();
+}
+
+;; Contract state structure 
+struct ContractState () {
+    int balance;
+    int seqno;
+    slice owner;
+    int code_hash;
+    cell data;
+    bool is_deployed;
+    cell code;
+    cell libraries;
+}
+
+
+;; Channel state structure
+struct ChannelState () {
+ int id;
+ slice participants;
+ coins balances;
+ uint256 merkle_root;
+ uint32 status;
+ uint64 created_at;
+ uint64 expires_at;
+ cell proof;
+}
+
+() create_transaction(uint256 id,
+                   uint32 op,
+                   uint64 channel_id,
+                   slice sender,
+                   slice recipient,
+                   coins amount,
+                   uint64 nonce,
+                   uint64 seqno,
+                   uint512 signature,
+    cell payload) impure {
+    throw_if(35, id == 0);
+    throw_if(36, channel_id == 0); 
+    throw_if(37, amount == 0);
+    throw_if(38, nonce == 0);
+    throw_if(39, signature == 0);
+    
+    cell transaction = begin_cell()
+        .store_uint(id, 256)
+        .store_uint(op, 32)
+        .store_uint(channel_id, 64)
+        .store_slice(sender)
+        .store_slice(recipient)
+        .store_coins(amount)
+        .store_uint(nonce, 64)
+        .store_uint(seqno, 64)
+        .store_uint(now(), 64)
+        .store_uint(signature, 512)
+        .store_maybe_ref(payload)
+        .end_cell();
+}
+(int, slice, slice, int, int, int, int, cell) load_transaction(slice data) inline {
+    return (data~load_uint(256),           ;; id
+            data~load_msg_addr(),          ;; sender
+            data~load_msg_addr(),          ;; recipient
+            data~load_coins(),             ;; amount
+            data~load_uint(64),            ;; nonce
+            data~load_uint(64),            ;; seqno
+            data~load_uint(512),           ;; signature
+            data~load_maybe_ref());        ;; payload
+}
+
+;; Merkle proof structure
+() createMerkleProof(int root, cell path, cell siblings) {
+    throw_if(50, root == 0);
+    int path_len = path.cell_depth();
+    int siblings_len = siblings.cell_depth();
+    throw_if(51, path_len != siblings_len);
+    throw_if(52, path_len == 0);
+    
+    int i = 0;
+    while (i < path_len) {
+        slice sibling = siblings.begin_parse();
+        throw_if(53, sibling~load_uint(256) == 0);
+        i += 1;
+    }
+}
+() verifyMerkleProof(int root, cell path, cell siblings) {
+    throw_if(54, root == 0);
+    int path_len = path.cell_depth();
+    int siblings_len = siblings.cell_depth();
+    throw_if(55, path_len != siblings_len);
+    throw_if(56, path_len == 0);
+    
+    int i = 0;
+    while (i < path_len) {
+        slice sibling = siblings.begin_parse();
+        throw_if(57, sibling~load_uint(256) == 0);
+        i += 1;
+    }
+}
+  
+
+;; Message structure for inter-contract communication
+struct Message () {
+    int msg_type;
+    MsgAddressInt sender;
+    MsgAddressInt recipient;
+    Coins amount;
+}
+
+
+;; Transaction structure
+(int, int, int, slice, slice, int, int, int, int, int, int, cell) load_transaction(slice data) inline {
+    return (data~load_uint(256),           ;; id
+            data~load_int(32),             ;; op
+            data~load_uint(64),            ;; channel_id
+            data~load_slice(),             ;; sender
+            data~load_slice(),             ;; recipient
+            data~load_coins(),             ;; amount
+            data~load_uint(64),            ;; nonce
+            data~load_uint(64),            ;; seqno
+            data~load_uint(64),            ;; timestamp
+            data~load_uint(512),           ;; signature
+            data~load_int(32),             ;; status
+            data~load_uint(256),           ;; merkle_root
+            data~load_ref());              ;; payload
+}
+
+() create_transaction(int id, int op, int channel_id, slice sender,
+                      slice recipient, int amount, int nonce,
+                      int seqno, int signature, cell payload) impure {
+    throw_if(35, id == 0);
+    throw_if(36, channel_id == 0); 
+    throw_if(37, amount == 0);
+    throw_if(38, nonce == 0);
+    throw_if(39, signature == 0);
+    
+    cell transaction = begin_cell()
+        .store_uint(id, 256)
+        .store_int(op, 32)
+        .store_uint(channel_id, 64)
+        .store_slice(sender)
+        .store_slice(recipient)
+        .store_coins(amount)
+        .store_uint(nonce, 64)
+        .store_uint(seqno, 64)
+        .store_uint(now(), 64)
+        .store_uint(signature, 512)
+        .store_int(STATUS_PENDING, 32)
+        .store_uint(calculate_merkle_root(id, op, channel_id,
+                                          sender, recipient,
+                                          amount, nonce,
+                                          seqno), 256)
+        .store_maybe_ref(payload)
+        .end_cell();
+}
+
+(int) verify_transaction(cell tx) {
+    slice s = tx.begin_parse();
+    throw_if(40, s~load_uint(256) == 0); 
+    throw_if(41, s~load_uint(64) == 0); 
+    throw_if(42, s~load_coins() == 0); 
+    throw_if(43, s~load_uint(64) == 0); 
+    throw_if(44, s~load_uint(512) == 0); 
+
+    Load status for verification
+    s.skip_bits((256 + 32 + (2 * slice_bits()) + (2 * uint_bits()) +
+                 uint_bits() + uint_bits() + uint_bits()) - (32));
+    (_, status) = s.load_int(32);
+
+    throw_if(45, status == STATUS_FAILED);
+    throw_if(46, status == STATUS_REJECTED);
+}
+
+(cell) serialize_transaction(slice tx) inline {
+    return begin_cell()
+        .store_slice(tx)
+        .end_cell();
+}
+
+(slice) deserialize_transaction(cell c) {
+    return c.begin_parse();
+}
+
+;; Contract state structure 
+struct ContractState () {
+    int balance;
+    int seqno;
+    slice owner;
+    int code_hash;
+    cell data;
+    bool is_deployed;
+    cell code;
+    cell libraries;
+}
+
+
+
+
+() create_transaction(uint256 id,
+                   uint32 op,
+                   uint64 channel_id,
+                   slice sender,
+                   slice recipient,
+                   coins amount,
+                   uint64 nonce,
+                   uint64 seqno,
+                   uint512 signature,
+    maybe_ref payload) impure {
+    throw_if(35, id == 0);
+    throw_if(36, channel_id == 0); 
+    throw_if(37, amount == 0);
+    throw_if(38, nonce == 0);
+    throw_if(39, signature == 0);
+    
+    cell transaction = begin_cell()
+        .store_uint(id, 256)
+        .store_uint(op, 32)
+        .store_uint(channel_id, 64)
+        .store_slice(sender)
+        .store_slice(recipient)
+        .store_coins(amount)
+        .store_uint(nonce, 64)
+        .store_uint(seqno, 64)
+        .store_uint(now(), 64)
+        .store_uint(signature, 512)
+        .store_maybe_ref(payload)
+        .end_cell();
+}
+(int, slice, slice, int, int, int, int, cell) load_transaction(slice data) inline {
+    return (data~load_uint(256),           ;; id
+            data~load_msg_addr(),          ;; sender
+            data~load_msg_addr(),          ;; recipient
+            data~load_coins(),             ;; amount
+            data~load_uint(64),            ;; nonce
+            data~load_uint(64),            ;; seqno
+            data~load_uint(512),           ;; signature
+            data~load_maybe_ref());        ;; payload
+}
+
+;; Merkle proof structure
+() createMerkleProof(int root, cell path, cell siblings) {
+    throw_if(50, root == 0);
+    int path_len = path.cell_depth();
+    int siblings_len = siblings.cell_depth();
+    throw_if(51, path_len != siblings_len);
+    throw_if(52, path_len == 0);
+    
+    int i = 0;
+    while (i < path_len) {
+        slice sibling = siblings.begin_parse();
+  
+      throw_if(53, sibling~load_uint(256) == 0);
+        i += 1;
+    }
+}
+() verifyMerkleProof(int root, cell path, cell siblings) {
+    throw_if(54, root == 0);
+    int path_len = path.cell_depth();
+    int siblings_len = siblings.cell_depth();
+    throw_if(55, path_len != siblings_len);
+    throw_if(56, path_len == 0);
+    
+    int i = 0;
+    while (i < path_len) {
+        slice sibling = siblings.begin_parse();
+        throw_if(57, sibling~load_uint(256) == 0);
+        i += 1;
+    }
+}

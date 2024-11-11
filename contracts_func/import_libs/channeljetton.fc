@@ -1,0 +1,233 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+#include "../sparse_merkle_tree.fc";
+#include "merkletreejetton.fc";
+
+;; Global constants for the contract
+const int POOL_SIZE = 1000000000; ;; 1 TON
+const int ONE_TON = 1000000000;
+
+global cell merkle;
+global cell fee_info;
+global cell nullifiers;
+global cell jetton_info;
+
+;; Handle internal messages
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) {
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    (slice fee_recipient, slice reward_master_address, int fee_percent, int tonnel_mint_amount_deposit, int tonnel_mint_amount_relayer, int fee_amount_total, int deposit_fee) = unpack_fee_info(fee_info);
+    
+    if (op == op::transfer_notification()) { ;; Jetton transfer notification handler
+        ;; Jetton transfer notification handler
+        int send_amount = in_msg_body~load_coins();
+        (slice jetton_master_address, cell JETTON_BYTECODE, cell stucks) = unpack_jetton_info(jetton_info);
+        int fee_amount = POOL_SIZE * fee_percent / 1000;
+
+        throw_unless(error::jetton_sender, equal_slices(sender_address, calculate_user_jetton_wallet_address(my_address(), jetton_master_address, JETTON_BYTECODE)));
+        slice origin_sender = in_msg_body~load_msg_addr();
+
+        if (msg_value < deposit_fee + const::tx_fee_send_jetton) {
+            ;; Refund case
+            send_jetton(origin_sender, send_amount, jetton_master_address, JETTON_BYTECODE);
+            return ();
+        }
+
+        if (send_amount != POOL_SIZE + fee_amount) {
+            send_jetton(origin_sender, send_amount, jetton_master_address, JETTON_BYTECODE);
+            return ();
+        }
+
+        cell commitment = in_msg_body~load_ref();
+        slice commitment_slice = commitment.begin_parse();
+        int commitment_value = commitment_slice~load_uint(256);
+        int new_root = commitment_slice~load_uint(256);
+        int given_old_root = commitment_slice~load_uint(256);
+        cell insert_proof = commitment_slice~load_ref();
+        slice insert_proof_slice = insert_proof.begin_parse();
+
+        (int old_root, int last_index) = get_last_root_handler(merkle);
+        throw_unless(error::verify_failed_input, commitment_value < FIELD_SIZE);
+        throw_unless(error::verify_failed_input, new_root < FIELD_SIZE);
+
+        int check = 0;
+        if (given_old_root == old_root) {
+            check = check_proof_for_insert(old_root, new_root, commitment_value, last_index, insert_proof_slice);
+        }
+        if (check == 0) {
+            stucks~udict_set(256, commitment_value, begin_cell().store_uint(commitment_value, 256).end_cell().begin_parse());
+        } else {
+            (int index, merkle) = insert(new_root, merkle);
+            emit_log_simple(op::deposit, begin_cell().store_uint(0, 8).store_uint(commitment_value, 256).store_uint(index, 32).end_cell().begin_parse());
+        }
+        mint_reward(origin_sender, tonnel_mint_amount_deposit * ONE_TON / 100, reward_master_address);
+        save_data(merkle,
+            pack_fee_info(fee_recipient, reward_master_address, fee_percent, tonnel_mint_amount_deposit, tonnel_mint_amount_relayer, fee_amount_total + fee_amount, deposit_fee),
+            nullifiers,
+            pack_jetton_info(jetton_master_address, JETTON_BYTECODE, stucks)
+        );
+
+        return ();
+    }
+    
+    if (op == op::withdraw) {
+        ;; Handle withdrawal operations
+        throw_unless(error::fund, msg_value > deposit_fee + 3 * const::tx_fee_send_jetton);
+
+        cell withdraw_info = in_msg_body~load_ref();
+        slice withdraw_info_slice1 = withdraw_info.begin_parse();
+        int root = withdraw_info_slice1~load_uint(256);
+        int nullifier_hash = withdraw_info_slice1~load_uint(256);
+        throw_unless(error::verify_failed_double_spend, is_unknown_nullifier(nullifier_hash, nullifiers));
+
+        int fee_coef = withdraw_info_slice1~load_uint(10);
+        cell addresses = withdraw_info_slice1~load_ref();
+        slice addresses_slice = addresses.begin_parse();
+        slice recipient = addresses_slice~load_msg_addr();
+        throw_unless(error::verify_failed_input, root < FIELD_SIZE);
+        throw_unless(error::verify_failed_input, nullifier_hash < FIELD_SIZE);
+        throw_unless(error::verify_failed_fee, fee_coef < 1000);
+        throw_unless(error::verify_failed_root, is_known_root(root));
+
+        int success = verify_withdraw_proof(withdraw_info);
+        throw_unless(error::verify_failed, success);
+
+        nullifiers~udict_set(256, nullifier_hash, begin_cell().end_cell().begin_parse());
+        int fee_amount = fee_coef * POOL_SIZE / 1000;
+
+        slice jetton_info_slice = jetton_info.begin_parse();
+        slice jetton_master_address = jetton_info_slice~load_msg_addr();
+        cell JETTON_BYTECODE = jetton_info_slice~load_ref();
+        emit_log_simple(op::withdraw, begin_cell().store_uint(1, 8).store_uint(nullifier_hash, 256).store_slice(recipient).store_uint(fee_coef, 32).end_cell().begin_parse());
+
+        send_jetton(recipient, POOL_SIZE - fee_amount, jetton_master_address, JETTON_BYTECODE);
+        send_jetton(sender_address, fee_amount, jetton_master_address, JETTON_BYTECODE);
+        mint_reward(sender_address, tonnel_mint_amount_relayer * ONE_TON / 100, reward_master_address);
+
+        save_data(merkle, fee_info, nullifiers, jetton_info);
+        return ();
+    }
+
+    if (op == op::remove_stuck_min) {
+        ;; Handle stuck minimum removal
+        (slice jetton_master_address, cell JETTON_BYTECODE, cell stucks) = unpack_jetton_info(jetton_info);
+        (stucks, _, slice val, int flag) = stucks.udict_delete_get_min(256);
+        throw_unless(error::empty_stuck, flag);
+        int commitment_value_stuck = val~load_uint(256);
+        cell commitment = in_msg_body~load_ref();
+        slice commitment_slice = commitment.begin_parse();
+        int commitment_value = commitment_slice~load_uint(256);
+        int new_root = commitment_slice~load_uint(256);
+        int given_old_root = commitment_slice~load_uint(256);
+        cell insert_proof = commitment_slice~load_ref();
+        slice insert_proof_slice = insert_proof.begin_parse();
+        (int old_root, int last_index) = get_last_root_handler(merkle);
+        throw_unless(error::verify_failed_input, commitment_value_stuck == commitment_value);
+        throw_unless(error::verify_failed_input, commitment_value < FIELD_SIZE);
+        throw_unless(error::verify_failed_input, new_root < FIELD_SIZE);
+        int check = 0;
+        if (given_old_root == old_root) {
+            check = check_proof_for_insert(old_root, new_root, commitment_value, last_index, insert_proof_slice);
+        }
+
+        throw_unless(error::verify_failed_input, check == 1);
+        (int index, merkle) = insert(new_root, merkle);
+
+        emit_log_simple(op::deposit, begin_cell().store_uint(0, 8).store_uint(commitment_value, 256).store_uint(index, 32).end_cell().begin_parse());
+        save_data(merkle,
+            fee_info,
+            nullifiers,
+            pack_jetton_info(jetton_master_address, JETTON_BYTECODE, stucks)
+        );
+        send_ton(sender_address, 0, SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE);
+
+        return ();
+    }
+
+    if (op == op::change_config) {
+        ;; Configuration change handler
+        throw_unless(error::access_denied, equal_slices(sender_address, fee_recipient));
+        slice fee_recipient_new = in_msg_body~load_msg_addr();
+        int new_fee_percent = in_msg_body~load_uint(16);
+        int new_tonnel_mint_amount_deposit = in_msg_body~load_uint(32);
+        int new_tonnel_mint_amount_relayer = in_msg_body~load_uint(32);
+        int deposit_fee_new = in_msg_body~load_coins();
+        save_data(merkle,
+                pack_fee_info(fee_recipient_new, reward_master_address, new_fee_percent, new_tonnel_mint_amount_deposit, new_tonnel_mint_amount_relayer, fee_amount_total, deposit_fee_new),
+                nullifiers,
+                jetton_info);
+        return ();
+    }
+    
+    if (op == op::claim_fee) {
+        ;; Fee claiming
+        (slice jetton_master_address, cell JETTON_BYTECODE, _) = unpack_jetton_info(jetton_info);
+        send_jetton(fee_recipient, fee_amount_total, jetton_master_address, JETTON_BYTECODE);
+        send_ton(fee_recipient, my_balance - 1 * ONE_TON, 1);
+        fee_amount_total = 0;
+        save_data(merkle,
+                pack_fee_info(fee_recipient, reward_master_address, fee_percent, tonnel_mint_amount_deposit, tonnel_mint_amount_relayer, fee_amount_total, deposit_fee),
+                nullifiers,
+                jetton_info);
+        return ();
+    }
+
+    throw(0xffff); ;; If no operation matches, throw an error.
+}
+
+;; Additional methods for proof verification, jetton transfer, and state management remain similar to your original contract. Each of these methods should be implemented for the TON smart contract ecosystem and should interact with zk-SNARK and sparse Merkle tree verification when required.
+;; The contract should be compiled and deployed to the TON blockchain using the TONOS-CLI tool.
+
+;; Verify the proof for a withdrawal operation
+int check_proof_for_withdraw(int old_root, int new_root, int commitment_value, int last_index, slice proof_slice) {
+    ;; Verify the proof for a withdrawal operation
+    int computed_root = commitment_value;
+    int path = last_index;
+    slice proof = proof_slice;
+    
+    repeat(256) {
+        int direction = path & 1;
+        path = path >> 1;
+        
+        slice current_slice = proof.begin_parse();
+        if (direction == 0) {
+            computed_root = check_proof_for_insert(computed_root, current_slice~load_uint(256), new_root);
+        } else {
+            computed_root = check_proof_for_insert(current_slice~load_uint(256), computed_root, new_root);
+        }
+    }
+    return equal_slices(old_root, computed_root);
+}
+
+
+;; Verify the proof for a transfer operation
+int check_proof_for_transfer(int old_root, int new_root, int commitment_value, int last_index, slice proof_slice) {
+    ;; Verify the proof for a transfer operation
+    int computed_root = commitment_value;
+    int path = last_index;
+    slice proof = proof_slice;
+    
+    repeat(256) {
+        int direction = path & 1;
+        path = path >> 1;
+        
+        slice current_slice = proof.begin_parse();
+        if (direction == 0) {
+            computed_root = check_proof_for_insert(computed_root, current_slice~load_uint(256), new_root);
+        } else {
+            computed_root = check_proof_for_insert(current_slice~load_uint(256), computed_root, new_root);
+        }
+    }
+    return equal_slices(old_root, computed_root);
+}

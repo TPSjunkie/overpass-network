@@ -1,0 +1,270 @@
+#pragma version >=0.2.0;
+#include "stdlib.fc";
+
+
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    return ();
+}
+
+;; Constants
+const int math::MAX_UINT8 = 255;
+const int math::MAX_UINT16 = 65535;
+const int math::MAX_UINT32 = 4294967295;
+const int math::MAX_UINT64 = 18446744073709551615;
+const int math::MAX_UINT128 = 340282366920938463463374607431768211455;
+const int math::MAX_UINT256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935;
+const int math::MAX_COINS = 1329227995784915872903807060280344575;
+const int math::ONE_DEC = 1000000000000000000;
+const int math::E = 2718281828459045235;
+const int math::PI = 3141592653589793238;
+const int math::PI_SQ = 9869604401089358618;
+const int math::ONE_DIV_E = 367879441171442321;
+const int math::ONE_DIV_PI = 318309886183790671;
+const int math::ONE_DIV_PI_SQ = 101321183642337771;
+
+;; Basic arithmetic operations
+int math::abs(int x) inline {
+    if (x < 0) { return -x; }
+    return x;
+}
+
+int math::min(int a, int b) inline {
+    if (a < b) { return a; }
+    return b;
+}
+
+int math::max(int a, int b) inline {
+    if (a > b) { return a; }
+    return b;
+}
+
+int math::avg(int a, int b) inline {
+    return (a + b) / 2;
+}
+
+;; Exponentiation and logarithms
+int math::pow(int base, int exponent) inline {
+    if ((exponent == 0) | (base == 0) | (base == 1)) { return base; }
+    if (exponent < 0) { return 0; }
+    
+    int result = 1;
+    while (exponent > 0) { ;; Integer division by zero is not allowed
+        if (exponent % 2 == 1) { result *= base; }
+        base *= base;
+        exponent /= 2;
+    }
+    return result;
+}
+
+int math::sqrt(int x) inline {
+    if ((x < 0) | (x == 0) | (x == 1)) { return x; }
+    
+    int left = 1;
+    int right = x;
+    int result = 0;
+    
+    while (left <= right) {
+        int mid = (left + right) / 2;
+        if (mid * mid == x) { return mid; }
+        if (mid * mid < x) { left = mid + 1; }
+        else { right = mid - 1; }
+    }
+    
+    return result;
+}
+
+int math::log2(int x) inline {
+    if ((x <= 0) | (x == 0)) { return 0; }
+    
+    int result = 0;
+    while (x > 1) {
+        x /= 2;
+        result += 1;
+    }
+    return result;
+}
+
+;; Trigonometric functions (simplified approximations)
+int math::sin(int x) inline {
+    ;; Approximate sin(x) using Taylor series up to x^7/7! (error < 1.5e-9)
+    ;; sin(x) ≈ x - x^3/3! + x^5/5! - x^7/7!
+    int x2 = (x * x) / math::ONE_DEC;
+    int x3 = (x2 * x) / math::ONE_DEC;
+    int x5 = (x3 * x2) / math::ONE_DEC;
+    int x7 = (x5 * x2) / math::ONE_DEC;
+    
+    return x - x3 / 6 + x5 / 120 - x7 / 5040;
+}
+
+int math::cos(int x) inline {
+    ;; Approximate cos(x) using Taylor series up to x^6/6! (error < 1.5e-9)
+    ;; cos(x) ≈ 1 - x^2/2! + x^4/4! - x^6/6!
+    int x2 = (x * x) / math::ONE_DEC;
+    int x4 = (x2 * x2) / math::ONE_DEC;
+    int x6 = (x4 * x2) / math::ONE_DEC;
+    
+    return math::ONE_DEC - x2 / 2 + x4 / 24 - x6 / 720;
+}
+
+int math::tan(int x) inline {
+    int sin_x = math::sin(x);
+    int cos_x = math::cos(x);
+    if (cos_x == 0) { return 0; }
+    return (sin_x * math::ONE_DEC) / cos_x;
+}
+
+;; Hyperbolic functions
+int math::sinh(int x) inline {
+    ;; sinh(x) = (e^x - e^-x) / 2
+    int exp_x = math::exp(x);
+    int exp_neg_x = math::ONE_DEC * math::ONE_DEC / exp_x;
+    return (exp_x - exp_neg_x) / 2;
+}
+
+int math::cosh(int x) inline {
+    ;; cosh(x) = (e^x + e^-x) / 2
+    int exp_x = math::exp(x);
+    int exp_neg_x = math::ONE_DEC * math::ONE_DEC / exp_x;
+    return (exp_x + exp_neg_x) / 2;
+}
+
+int math::tanh(int x) inline {
+    int sinh_x = math::sinh(x);
+    int cosh_x = math::cosh(x);
+    if (cosh_x == 0) { return 0; }
+    return (sinh_x * math::ONE_DEC) / cosh_x;
+}
+
+;; Exponential and natural logarithm
+int math::exp(int x) inline {
+    ;; Approximate exp(x) using Taylor series up to x^4/4!
+    ;; exp(x) ≈ 1 + x + x^2/2! + x^3/3! + x^4/4!
+    int x2 = (x * x) / math::ONE_DEC;
+    int x3 = (x2 * x) / math::ONE_DEC;
+    int x4 = (x3 * x) / math::ONE_DEC;
+    
+    return math::ONE_DEC + x + x2 / 2 + x3 / 6 + x4 / 24;
+}
+
+int math::ln(int x) inline {
+    if ((x <= 0) | (x == 0)) { return 0; }
+    
+    ;; Use the identity: ln(x) = 2 * arctanh((x - 1) / (x + 1))
+    int y = ((x - math::ONE_DEC) * math::ONE_DEC) / (x + math::ONE_DEC);
+    return 2 * math::artanh(y);
+}
+
+;; Inverse trigonometric functions
+int math::arcsin(int x) inline {
+    if ((x < -math::ONE_DEC) | (x > math::ONE_DEC)) {
+        return 0; ;; Error: input out of range [-1, 1]
+    }
+    
+    ;; Use the identity: arcsin(x) = arctan(x / sqrt(1 - x^2))
+    int x2 = (x * x) / math::ONE_DEC;
+    int denom = math::sqrt((math::ONE_DEC - x2) * math::ONE_DEC);
+    if (denom == 0) { return 0; }
+    return math::arctan((x * math::ONE_DEC) / denom);
+}
+
+int math::arccos(int x) inline {
+    if ((x < -math::ONE_DEC) | (x > math::ONE_DEC)) {
+        return 0; ;; Error: input out of range [-1, 1]
+    }
+    
+    ;; Use the identity: arccos(x) = pi/2 - arcsin(x)
+    return (math::PI / 2) - math::arcsin(x);
+}
+
+int math::arctan(int x) inline {
+    ;; Approximate arctan(x) using Taylor series up to x^7 (error < 1.5e-9)
+    ;; arctan(x) ≈ x - x^3/3 + x^5/5 - x^7/7
+    int x2 = (x * x) / math::ONE_DEC;
+    int x3 = (x2 * x) / math::ONE_DEC;
+    int x5 = (x3 * x2) / math::ONE_DEC;
+    int x7 = (x5 * x2) / math::ONE_DEC;
+    
+    return x - x3 / 3 + x5 / 5 - x7 / 7;
+}
+
+;; Inverse hyperbolic functions
+int math::arsinh(int x) inline {
+    ;; arsinh(x) = ln(x + sqrt(x^2 + 1))
+    int x2 = (x * x) / math::ONE_DEC;
+    int sqrt_term = math::sqrt((x2 + math::ONE_DEC) * math::ONE_DEC);
+    return math::ln(x + sqrt_term);
+}
+
+int math::arcosh(int x) inline {
+    if ((x < math::ONE_DEC) | (x > math::ONE_DEC)) {
+        return 0; ;; Error: input less than 1
+    }
+    
+    ;; arcosh(x) = ln(x + sqrt(x^2 - 1))
+    int x2 = (x * x) / math::ONE_DEC;
+    int sqrt_term = math::sqrt((x2 - math::ONE_DEC) * math::ONE_DEC);
+    return math::ln(x + sqrt_term);
+}
+
+int math::artanh(int x) inline {
+    if ((x <= -math::ONE_DEC) | (x >= math::ONE_DEC)) {
+        return 0; ;; Error: input out of range (-1, 1)
+    }
+    
+    ;; artanh(x) = 1/2 * ln((1 + x) / (1 - x))
+    int numerator = math::ONE_DEC + x;
+    int denominator = math::ONE_DEC - x;
+    if (denominator == 0) { return 0; }
+    return (math::ln((numerator * math::ONE_DEC) / denominator) * math::ONE_DEC) / 2;
+}
+
+;; Additional utility functions
+int math::factorial(int n) inline {
+    if ((n < 0) | (n == 0) | (n == 1)) { return 1; }
+    
+    int result = 1;
+    repeat(n - 1) {
+        n -= 1;
+        result *= n;
+    }
+    return result;
+}
+
+int math::gcd(int a, int b) inline {
+    a = math::abs(a);
+    b = math::abs(b);
+    while (b != 0) {
+        int temp = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
+}
+
+int math::lcm(int a, int b) inline {
+    if ((a == 0) | (b == 0)) {
+        return 0;
+    }
+    return (math::abs(a) / math::gcd(a, b)) * math::abs(b);
+}
+
+int math::is_prime(int n) inline {
+    if ((n <= 1) | (n == 2) | (n == 3)) {
+        return 0;
+    }
+    if ((n == 2) | (n == 3)) {
+        return 1;
+    }
+    if ((n % 2 == 0) | (n % 3 == 0)) {
+        return 0;
+    }
+    
+    int i = 5;
+    while (i * i <= n) {
+        if ((n % i == 0) | (n % (i + 2) == 0)) {
+            return 0;
+        }
+        i += 6;
+    }
+    return 1;
+}

@@ -1,0 +1,42 @@
+#pragma version >=0.2.0;
+#include "./stdlib.fc";
+
+;; Operation codes
+const int op::transfer_funds = 0x5fcc3d14;           ;; Unique op code for transferring funds
+const int op::submit_root = 0x7a8b9cde;              ;; Unique op code for submitting a new Merkle root
+const int op::close_channel = 0x4e436c73;            ;; Unique op code for closing a channel
+const int op::resolve_dispute = 0x9bcd34ef;          ;; Unique op code for resolving disputes
+const int op::ownership_assigned = 0x05138d91;       ;; Unique op code for ownership assignment
+
+
+;; Constants for operations
+const int MSG_UPDATE_CHANNEL = 0x01;
+const int MSG_CROSS_SHARD_TX = 0x02;
+const int MSG_CROSS_CHANNEL_TX = 0x03;
+
+;; Error codes
+const int ERROR_INSUFFICIENT_FEE = 101;
+const int ERROR_CHANNEL_NOT_FOUND = 102;
+const int ERROR_INVALID_SENDER = 103;
+const int ERROR_MAX_CHANNELS_REACHED = 104;
+const int ERROR_MERKLE_UPDATE_FAILED = 105;
+const int ERROR_UNSUPPORTED_OPERATION = 106;
+const int ERROR_EXPIRED_TRANSACTION = 107;
+const int ERROR_INVALID_OPERATION = 108;
+const int ERROR_UNAUTHORIZED = 109;
+const int ERROR_INSUFFICIENT_FUNDS = 110;
+const int ERROR_INVALID_PROOF = 111;
+;; Constants for operations related to channel initialization and interaction
+const int op::init_channel = 0x0f0f0f0f;    ;; Operation code for initiating a new channel
+const int op::channel_init = 0x1f1f1f1f;    ;; Operation code for channel initialization message
+const int op::channel_update = 0x2f2f2f2f;    ;; Operation code for channel update message
+const int op::init_channel = 0x0f0f0f0f;    ;; Operation code for initiating a new channel
+const int op::channel_init = 0x1f1f1f1f;    ;; Operation code for channel initialization message
+const int op::channel_update = 0x2f2f2f2f;    ;; Operation code for channel update message
+const int op::close_channel = 0x4f4f4f4f;    ;; Operation code for closing a channel
+const int op::resolve_dispute = 0x9f9f9f9f;    ;; Operation code for resolving disputes
+const int op::ownership_assigned = 0x5f5f5f5f;    ;; Operation code for ownership assignment
+const int op::verify_plonky2_proof = 0x6f6f6f6f;    ;; Operation code for verifying a Plonky2 proof
+
+
+

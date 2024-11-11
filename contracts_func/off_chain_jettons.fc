@@ -1,0 +1,157 @@
+;; ./contracts/off_chain_jettons.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/stdlib.fc";
+
+const int SEND_MODE_CARRY_ALL_REMAINING_BALANCE = 128;
+const int MIN_TRANSACTION_AMOUNT = 1000000000;  ;; 1 TON
+const int CHANNEL_LIFETIME = 60 * 60 * 24 * 30;  ;; 30 days in seconds
+const int MAX_UINT256 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+const int MAX_UINT128 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+
+const int OP_OPEN_CHANNEL = 0x01;
+const int OP_UPDATE_CHANNEL = 0x02;
+const int OP_CLOSE_CHANNEL = 0x03;
+const int OP_FORCE_CLOSE_CHANNEL = 0x04;
+
+;; Global variables
+global cell channel_cell;
+global slice channel_id;
+global slice channel_participant_a;
+global slice channel_participant_b;
+global int channel_balance_a;
+global int channel_balance_b;
+global int channel_seqno;
+global int channel_expiry;
+global int channel_counter;
+
+() channel(slice participant_a, slice participant_b, int balance_a, int balance_b, int seqno, int expiry) impure inline_ref {
+    set_data(begin_cell()
+        .store_slice(participant_a)
+        .store_slice(participant_b)
+        .store_uint(balance_a, 128)
+        .store_uint(balance_b, 128)
+        .store_uint(seqno, 64)
+        .store_uint(expiry, 64)
+        .end_cell());
+}
+
+(slice, slice, int, int, int, int) load_channel() impure inline_ref {
+    slice ds = get_data().begin_parse();
+    slice participant_a = ds~load_msg_addr();
+    slice participant_b = ds~load_msg_addr();
+    int balance_a = ds~load_uint(128);
+    int balance_b = ds~load_uint(128);
+    int seqno = ds~load_uint(64);
+    int expiry = ds~load_uint(64);
+    return (participant_a, participant_b, balance_a, balance_b, seqno, expiry);
+}
+
+(cell, slice, slice, int, int, int, int) load_data() impure inline_ref {
+    slice ds = get_data().begin_parse();
+    slice participant_a = ds~load_msg_addr();
+    slice participant_b = ds~load_msg_addr();
+    int balance_a = ds~load_uint(128);
+    int balance_b = ds~load_uint(128);
+    int seqno = ds~load_uint(64);
+    int expiry = ds~load_uint(64);
+    return (get_data(), participant_a, participant_b, balance_a, balance_b, seqno, expiry);
+}
+
+() save_data() impure inline {
+    set_data(begin_cell()
+        .store_slice(channel_participant_a)
+        .store_slice(channel_participant_b)
+        .store_uint(channel_balance_a, 128)
+        .store_uint(channel_balance_b, 128)
+        .store_uint(channel_seqno, 64)
+        .store_uint(channel_expiry, 64)
+        .store_uint(channel_counter, 32)
+        .end_cell());
+}
+
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    var (channel_data, participant_a, participant_b, balance_a, balance_b, seqno, expiry) = load_data();
+    
+    var cs = in_msg_full.begin_parse();
+    var flags = cs~load_uint(4);
+    if (flags & 1) {
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+    
+    int op = in_msg_body~load_uint(32);
+    
+    if (op == 1) {  ;; Open channel
+        throw_if(100, seqno != 0);
+        int initial_balance_a = in_msg_body~load_coins();
+        int initial_balance_b = in_msg_body~load_coins();
+        throw_if(101, initial_balance_a + initial_balance_b != msg_value);
+        
+        channel_balance_a = initial_balance_a;
+        channel_balance_b = initial_balance_b;
+        channel_seqno = 1;
+        channel_expiry = now() + 3600;  ;; Set expiry to 1 hour from now
+        channel_counter = 0;
+        
+        save_data();
+    } elseif (op == 2) {  ;; Close channel
+        throw_if(102, now() < expiry);
+        int final_balance_a = in_msg_body~load_coins();
+        int final_balance_b = in_msg_body~load_coins();
+        throw_if(103, final_balance_a + final_balance_b != balance_a + balance_b);
+        
+        raw_reserve(final_balance_a + final_balance_b, 0);
+        
+        var msg = begin_cell()
+            .store_uint(0x10, 6)
+            .store_slice(participant_a)
+            .store_coins(final_balance_a)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .end_cell();
+        send_raw_message(msg, 1);
+        
+        msg = begin_cell()
+            .store_uint(0x10, 6)
+            .store_slice(participant_b)
+            .store_coins(final_balance_b)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .end_cell();
+        send_raw_message(msg, 1);
+        
+        set_data(begin_cell().end_cell());
+    } else {
+        throw(0xffff);
+    }
+}
+
+() recv_external(slice in_msg) impure {
+    var (channel_data, participant_a, participant_b, balance_a, balance_b, seqno, expiry) = load_data();
+    
+    var signature = in_msg~load_bits(512);
+    var cs = in_msg;
+    var msg_seqno = cs~load_uint(64);
+    
+    throw_if(104, msg_seqno < seqno);
+    throw_if(105, msg_seqno > seqno + 1000);
+    
+    var msg_balance_a = cs~load_coins();
+    var msg_balance_b = cs~load_coins();
+    var msg_expiry = cs~load_uint(64);
+    
+    throw_if(106, msg_balance_a + msg_balance_b != balance_a + balance_b);
+    throw_if(107, msg_expiry < expiry);
+    
+    var hash = slice_hash(in_msg);
+    var public_key = cs~load_uint(256);
+    throw_unless(108, check_signature(hash, signature, public_key));
+    
+    channel_balance_a = msg_balance_a;
+    channel_balance_b = msg_balance_b;
+    channel_seqno = msg_seqno;
+    channel_expiry = msg_expiry;
+    channel_counter += 1;
+    
+    save_data();
+}

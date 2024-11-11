@@ -1,0 +1,298 @@
+/* PipBoy Wallet Styles */
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+:root {
+  --pip-boy-green: #69c22e;
+  --pip-boy-dark-green: #3e841e;
+  --pip-boy-bg: #001a0e;
+  --pip-boy-border: #57920d;
+  --pip-boy-text: #69c22e;
+}
+
+body {
+  background-color: #000;
+  color: var(--pip-boy-text);
+  font-family: "VT323", monospace;
+  font-size: 150%;
+  margin: 0;
+  padding: 40%;
+}
+
+.ton-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background-color: var(--pip-boy-dark-green);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+
+.pip-boy-container {
+  max-width: 1024px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pip-boy-screen {
+  flex-grow: 1;
+  background-color: var(--pip-boy-bg);
+  border: 4px solid var(--pip-boy-border);
+  border-radius: 15px;
+  box-shadow: 0 0 20px var(--pip-boy-green);
+  padding: 20px;
+  margin: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pip-boy-header {
+  text-align: center;
+  font-size: 55px;
+  margin-bottom: 10%;
+  text-shadow: 0 0 2px var(--pip-boy-green);
+}
+
+.op-logo {
+  width: 65%;
+  height: auto;
+  margin-top: 10%;
+}
+
+.logo-word {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  max-width: 50%;
+  margin-bottom: 200px;
+}
+
+
+.load-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 80%;
+  text-align: center;
+}
+
+.load-screen-content {
+  background-color: rgba(46, 194, 126, 0.1);
+  border: 1px solid var(--pip-boy-border);
+  border-radius: 5px;
+  padding: 30px;
+  max-width: 40px;
+}
+
+.pip-boy-logo {
+  width: 50%;
+  height: auto;
+  margin-bottom: 44px;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 80%;
+}
+
+.loading-gif {
+  width: 90px;  /* Adjust based on your GIF's dimensions */
+  height: auto;
+  margin-bottom: 20px;
+}
+
+.loading-text {
+  font-size: 1.2em;
+}
+
+.connect-wallet-container {
+  margin-top: 2px;
+}
+
+.pip-boy-button {
+  background-color: var(--pip-boy-dark-green);
+  color: var(--pip-boy-text);
+  border: 1px solid var(--pip-boy-border);
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 22px;
+}
+.logo {
+  display: flex;
+  max-width: 90%;
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.pip-boy-button:hover {
+  background-color: var(--pip-boy-green);
+  color: var(--pip-boy-bg);
+}
+
+
+.scanline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0) 20%,
+    rgba(0, 0, 0, 0.2) 20%,
+    rgba(0, 0, 0, 0.2)
+  );
+  background-size: 100% 6px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.9;
+  animation: scanlines 74s linear infinite;  
+}
+.glow-text {
+  text-shadow: 0 0 2px var(--pip-boy-green);
+}
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
+  }
+}
+
+.scanlines::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 50%,
+    rgba(0, 0, 0, 0.1) 51%
+  );
+  background-size: 100% 4px;
+  animation: scanlines 62s linear infinite;
+  pointer-events: none;
+}
+@keyframes scanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
+  }
+}
+
+
+.pip-boy-header {
+  font-size: 2.5em;
+  margin: 0;
+  text-shadow: 0 0 5px var(--pip-boy-green);
+}
+
+.pip-boy-nav {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 20px;
+}
+
+.pip-boy-nav button {
+  background-color: var(--pip-boy-dark-green);
+  color: var(--pip-boy-green);
+  border: 2px solid var(--pip-boy-green);
+  padding: 10px 20px;
+  font-family: 'VT323', monospace;
+  font-size: 1.2em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.pip-boy-nav button:hover,
+.pip-boy-nav button.active {
+  background-color: var(--pip-boy-green);
+  color: var(--pip-boy-bg);
+}
+
+.about {
+  font-size: 24px;
+}
+
+.home {
+  font-size: 24px;
+}
+
+.pip-boy-content {
+  padding: 20px;
+  border: 2px solid var(--pip-boy-green);
+  min-height: 300px;
+}
+
+.balances-tab ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.balances-tab li {
+  margin-bottom: 10px;
+  font-size: 2em;
+}
+
+.balance {
+  float: right;
+}
+
+
+.pip-boy-button:hover {
+  background-color: var(--pip-boy-green);
+  color: var(--pip-boy-bg);
+}
+
+.assign-buttons,
+.transaction-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+
+
+
+/* ./src/styles/PipBoyWalletDashboard.css */
+
+.connect-wallet .tc-connect-button {
+  background-color: var(--pip-boy-green);
+  color: var(--pip-boy-bg);
+  border: 2px solid var(--pip-boy-green);
+  font-family: 'VT323', monospace;
+  font-size: 1.2em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 10px 20px;
+}
+
+.connect-wallet .tc-connect-button:hover {
+  position: relative;
+  top: 30%;
+  left: 10%;
+  background-color: var(--pip-boy-dark-green);
+  color: rgba(94, 193, 36, 0.1);
+}

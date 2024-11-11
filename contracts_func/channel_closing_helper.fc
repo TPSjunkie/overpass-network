@@ -1,0 +1,143 @@
+;; ./contracts/channel_closing_helper.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/stdlib.fc";
+#include "./import_libs/op-codes.fc";
+
+;; ===========================================================
+;; 1. Data Persistence
+;; ===========================================================
+
+;; Function to load the current state data from persistent storage
+(slice) load_data() inline {
+    var ds = get_data().begin_parse();
+    return ds~load_ref().begin_parse();
+}
+
+;; Function to save updated state data to persistent storage
+() save_data(cell data) impure inline { 
+    set_data(begin_cell().store_ref(data).end_cell());
+}
+
+;; ===========================================================
+;; 2. Channel Operations
+;; ===========================================================
+
+;; Commits the state to the global Merkle root contract
+() commit_state(slice new_root) impure inline {
+    save_data(begin_cell().store_slice(new_root).end_cell());  ;; Store the new Merkle root in the contract's data
+
+    ;; Notify the global Merkle root contract to update the Merkle root
+    var msg = begin_cell()
+        .store_uint(0x18, 6)  ;; nobounce, internal message
+        .store_slice(load_data())  ;; Address of the global Merkle root contract (stored in contract data)
+        .store_coins(0)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(0x53554252, 32)  ;; Unique op code for updating root (submit_root)
+        .store_slice(new_root)  ;; Include new Merkle root in the message
+        .end_cell();
+
+    send_raw_message(msg, 64);  ;; mode 64 ensures no balance is deducted from this contract
+}
+
+;; Transfers the funds from the channel to the final destination
+() transfer(int amount, slice destination) impure inline {
+    throw_unless(1000, get_balance().pair_first() >= amount);  ;; Ensure enough balance
+
+    var msg = begin_cell()
+        .store_uint(0x18, 6)  ;; nobounce, internal message
+        .store_slice(destination)  ;; Destination address
+        .store_coins(amount)  ;; Amount to transfer
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(0x5452414E, 32)  ;; Unique op code for transferring funds (transfer_funds)
+        .end_cell();
+
+    send_raw_message(msg, 1);  ;; Send funds, paying fees from the contract's balance
+}
+
+;; ===========================================================
+;; 3. Message Handlers
+;; ===========================================================
+
+;; Handles internal messages sent to the contract
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure inline {
+    slice cs = in_msg_body;
+    int op = cs~load_uint(32);  ;; Operation code (32 bits)
+
+    if (op == 0x434C4F53) {  ;; close_channel
+        slice channel_address = cs~load_msg_addr();
+        int amount = cs~load_coins();
+        ;; Close the channel (implementation needed)
+    } elseif (op == 0x5245534F) {  ;; resolve_dispute
+        slice channel_address = cs~load_msg_addr();
+        cell state_proof = cs~load_ref();
+        ;; Resolve the dispute (implementation needed)
+    } elseif (op == 0x05138D91) {  ;; ownership_assigned
+        return ();  ;; Return if the operation is ownership_assigned
+    } else {
+        throw(135);  ;; Throw exception for unknown operations (135 is an arbitrary error code)
+    }
+}
+
+;; Handles external messages (from off-chain or other contracts)
+() recv_external(slice in_msg) impure inline {
+    int operation = in_msg~load_uint(32);  ;; Operation code (32 bits)
+
+    if (operation == 0x53554252) {  ;; submit_root
+        slice new_root = in_msg~load_bits(256);  ;; Load the new root (32 bytes)
+        commit_state(new_root);  ;; Commit the new root
+    } elseif (operation == 0x5452414E) {  ;; transfer_funds
+        int amount = in_msg~load_coins();  ;; Load the amount (64 bits)
+        slice destination = in_msg~load_msg_addr();  ;; Load the destination address
+        transfer(amount, destination);  ;; Transfer the specified amount to the destination address
+    } else {
+        throw(135);  ;; Throw exception for unknown operations (135 is an arbitrary error code)
+    }
+}
+
+;; ===========================================================
+;; 4. Channel Management
+;; ===========================================================
+
+;; Closes the channel and transfers funds to the parties involved
+() close_channel(slice channel_address, int amount) impure inline {
+    ;; Transfer the final balances to the appropriate parties
+    var msg = begin_cell()
+        .store_uint(0x18, 6)  ;; nobounce, internal message
+        .store_slice(channel_address)  ;; Address of the channel to close
+        .store_coins(0)  ;; No additional coins transferred
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(0x434C4F53, 32)  ;; Unique op code for closing the channel
+        .store_coins(amount)  ;; The final amount to be transferred
+        .end_cell();
+
+    send_raw_message(msg, 64);  ;; Send message to close the channel
+}
+
+;; Resolves disputes by verifying the provided state proof
+() resolve_dispute(slice channel_address, cell state_proof) impure inline {
+    ;; In real implementation, this would involve zk-SNARK or cryptographic verification of the proof
+    ;; Send a message to update the channel's state
+    var msg = begin_cell()
+        .store_uint(0x18, 6)  ;; nobounce, internal message
+        .store_slice(channel_address)  ;; Address of the channel involved in the dispute
+        .store_coins(0)  ;; No additional coins
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(0x5245534F, 32)  ;; Unique op code for resolving disputes
+        .store_ref(state_proof)  ;; The verified state proof
+        .end_cell();
+
+    send_raw_message(msg, 64);  ;; Send message to update the channel's state
+}
+
+;; ===========================================================
+;; 5. Initialization
+;; ===========================================================
+
+;; Function to initialize the contract (called on contract deployment)
+() init() impure inline {
+    ;; Initialize the contract with the owner address
+    var owner_address = my_address();
+    save_data(begin_cell().store_slice(owner_address).end_cell());
+}

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Test the contracts
+./target/release/overpass-channels test  --config ./config/config.toml  --chain-id=overpass-devnet-2 --keyring-backend=file --keyring-dir=/Users/cryptskii/keys --from=overpass --gas=auto --fees=1000uoverpass --broadcast-mode=block --yes --gas-prices=1000uoverpass --gas-adjustment=1.5 --node=https://rpc.testnet.overpass.wtf:443 --output ./output/test.json  --chain-id=overpass-devnet-2 --keyring-backend=file --keyring-dir=/Users/cryptskii/keys --from=overpass --gas=auto --fees=1000uoverpass --broadcast-mode=block --yes --gas-prices=1000uoverpass --gas-adjustment=1.5 --node=https://rpc.testnet.overpass.wtf:443 --output ./output/test.json  

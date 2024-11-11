@@ -1,0 +1,11 @@
+groups:
+  - name: channel-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(error_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected in channel updates"
+          description: "The error rate for channel updates has exceeded 5% over the last 5 minutes."

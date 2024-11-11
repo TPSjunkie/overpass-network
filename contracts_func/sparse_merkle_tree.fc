@@ -1,0 +1,74 @@
+;; ./contracts/sparse_merkle_tree.fc
+
+#pragma version >=0.2.0;
+
+#include "import_libs/stdlib.fc";
+#include "import_libs/math.fc"; 
+
+const int TREE_HEIGHT = 256;
+const int EMPTY_TREE_ROOT = 0x0000000000000000000000000000000000000000000000000000000000000000;
+
+global cell sparse_merkle_tree;
+
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    int op = in_msg_body~load_uint(32);
+    
+    if (op == 1) { ;; Update root
+        int new_root = in_msg_body~load_uint(256);
+        sparse_merkle_tree = begin_cell().store_uint(new_root, 256).end_cell();
+        save_data();
+    } elseif (op == 2) { ;; Get root
+        int root = get_root();
+        ;; Send root back to the caller (implementation for sending response omitted)
+    } elseif (op == 3) { ;; Verify proof
+        int key = in_msg_body~load_uint(256);
+        int value = in_msg_body~load_uint(256);
+        cell proof = in_msg_body~load_ref();
+        int root = get_root();
+        int is_valid = verify_proof(proof, key, value, root);
+        ;; Send verification result back to the caller (implementation for sending response omitted)
+    }
+}
+
+;; Get the current root of the sparse Merkle tree
+int get_root() inline {
+    return sparse_merkle_tree.begin_parse().preload_uint(256);
+}
+
+;; Verify the proof for a given key-value pair
+int verify_proof(cell proof, int key, int value, int root) {
+    int computed_root = value;
+    int path = key;
+    
+    cell current_proof = proof;
+    repeat (TREE_HEIGHT) {
+        slice proof_slice = current_proof.begin_parse();
+        current_proof = proof_slice~load_ref();
+        
+        int direction = path & 1;
+        path = path >> 1;
+        
+        if (direction == 0) {
+            int sibling = proof_slice~load_uint(256);
+            computed_root = cell_hash(begin_cell().store_uint(computed_root, 256).store_uint(sibling, 256).end_cell());
+        } else {
+            int sibling = proof_slice~load_uint(256);
+            computed_root = cell_hash(begin_cell().store_uint(sibling, 256).store_uint(computed_root, 256).end_cell());
+        }
+    }
+    
+    return computed_root == root;
+}
+
+;; Save the current state of the sparse Merkle tree
+() save_data() impure {
+    set_data(sparse_merkle_tree);
+}
+
+;; Load the state of the sparse Merkle tree from persistent storage
+() load_data() impure {
+    sparse_merkle_tree = get_data();
+}

@@ -1,0 +1,56 @@
+;; ./src/contracts/governance_contract.fc
+
+#pragma version >=0.2.0;
+
+#include "import_libs/stdlib.fc";
+
+;; ===========================================================
+;; 1. Constants and Parameters
+;; ===========================================================
+
+global int governance_enabled;  ;; Governance is enabled by default
+
+;; Example voting parameters
+const int VOTING_PERIOD = 86400;  ;; Example voting period (1 day)
+
+global int vote_end_time;  ;; Initialize vote end time
+global int current_votes;  ;; Initialize current votes
+const int total_stake = 1000;  ;; Example total stake needed for vote to pass
+
+;; ===========================================================
+;; Voting Logic
+;; ===========================================================
+
+;; Start a new vote for governance action
+() start_vote() impure {
+    throw_if(2001, governance_enabled == 0);  ;; Governance is disabled
+    vote_end_time = now() + VOTING_PERIOD;
+    current_votes = 0;  ;; Reset vote count
+}
+
+;; Cast a vote
+() vote(int stake) impure {
+    throw_if(2002, now() > vote_end_time);  ;; Voting period ended
+
+    ;; Accumulate votes
+    current_votes += stake;
+}
+
+;; Execute the result of the vote
+() execute_vote() impure {
+    throw_if(2003, now() < vote_end_time);  ;; Voting period still ongoing
+    throw_if(2004, current_votes < total_stake);  ;; Not enough votes to pass
+
+    ;; Allow governance actions (e.g., emergency root updates)
+    governance_enabled = 1;
+}
+
+;; Lock governance to prevent further actions until re-enabled
+() lock_governance() impure {
+    governance_enabled = 0;
+}
+
+;; Main entry point
+() main() impure {
+    ;; Add your main logic here
+}

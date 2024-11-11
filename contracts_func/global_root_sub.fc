@@ -1,0 +1,128 @@
+;; ./contracts/global_root_sub.fc
+
+#pragma version >=0.2.0;
+
+#include "import_libs/stdlib.fc";
+
+;; ===========================================================
+;; 1. Constants and Parameters
+;; ===========================================================
+
+;; Global root to store the latest Merkle root
+global int current_global_root;
+;; Epoch-related state
+const int EPOCH_LENGTH = 24 * 60 * 60;  ;; Epoch length (1 day)
+global int last_submission_time;
+;; Governance-controlled flag to allow emergency governance intervention
+global int governance_allowed;
+
+;; ===========================================================
+;; Root Submission Logic
+;; ===========================================================
+
+;; Function for submitting global root at the end of an epoch
+() submit_global_root(int new_root) impure {
+    int current_time = now();
+    throw_if(1001, current_time < last_submission_time + EPOCH_LENGTH);  ;; Ensure submission is allowed
+
+    ;; Update the global Merkle root
+    current_global_root = new_root;
+
+    ;; Update the last submission time
+    last_submission_time = current_time;
+}
+
+;; ===========================================================
+;; Governance Emergency Root Update
+;; ===========================================================
+
+;; Function to allow governance-based update of the root
+() governance_update_root(int new_root) impure {
+    ;; Only allow governance to update the root when explicitly allowed
+    throw_if(1002, governance_allowed == 0);
+
+    ;; Update the global Merkle root
+    current_global_root = new_root;
+
+    ;; Lock the governance control after update
+    governance_allowed = 0;
+}
+
+;; ===========================================================
+;; Getter Functions
+;; ===========================================================
+
+;; Function to get the current global root
+int get_current_global_root() method_id {
+    return current_global_root;
+}
+
+;; Function to get the last submission time
+int get_last_submission_time() method_id {
+    return last_submission_time;
+}
+
+;; Function to check if governance intervention is allowed
+int is_governance_allowed() method_id {
+    return governance_allowed;
+}
+
+;; ===========================================================
+;; Initialization
+;; ===========================================================
+
+;; Function to initialize the contract
+() init_contract(int initial_root) impure {
+    current_global_root = initial_root;
+    last_submission_time = now();
+    governance_allowed = 0;
+}
+
+;; ===========================================================
+;; Governance Control
+;; ===========================================================
+
+;; Function to enable governance intervention
+() enable_governance() impure {
+    ;; Only allow the contract owner to enable governance
+    throw_unless(1003, equal_slices(my_address(), null()));
+    
+    ;; Set the governance_allowed flag to 1
+    governance_allowed = 1;
+}
+
+;; Function to disable governance intervention
+() disable_governance() impure {
+    ;; Only allow the contract owner to disable governance
+    throw_unless(1004, equal_slices(my_address(), null()));
+    
+    ;; Set the governance_allowed flag to 0
+    governance_allowed = 0;
+}
+
+;; ===========================================================
+;; Main Contract Logic
+;; ===========================================================
+
+;; Main function to handle incoming messages
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    
+    int op = in_msg_body~load_uint(32);
+    
+    if (op == 1) {  ;; Submit global root
+        int new_root = in_msg_body~load_uint(256);
+        submit_global_root(new_root);
+    } elseif (op == 2) {  ;; Governance update root
+        int new_root = in_msg_body~load_uint(256);
+        governance_update_root(new_root);
+    } elseif (op == 3) {  ;; Enable governance
+        enable_governance();
+    } elseif (op == 4) {  ;; Disable governance
+        disable_governance();
+    } else {
+        throw(1000);  ;; Unknown operation
+    }
+}

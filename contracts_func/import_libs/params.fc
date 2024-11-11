@@ -1,0 +1,84 @@
+;; Params for the payment channel contracts
+;; Constants
+const int MAX_CHANNEL_BALANCE = 1000000000000000; ;; 1000 TON
+const int MAX_CHANNELS = 100;
+const int MIN_TON_FOR_STORAGE = 10000000; ;; 0.01 TON    
+const int GAS_CONSUMPTION = 10000000; ;; 0.01 TON
+const int GAS_FOR_STORAGE = 10000000; ;; 0.01 TON
+const int GAS_FOR_MESSAGE = 10000000; ;; 0.01 TON
+const int GAS_FOR_MESSAGE_WITH_VALUE = 10000000; ;; 0.01 TON 
+const int GAS_FOR_MESSAGE_WITH_VALUE_AND_DATA = 10000000; ;; 0.01 TON
+;; cross-shard messages
+const int GAS_FOR_MESSAGE_WITH_VALUE_AND_DATA_AND_DATA_IN_MESSAGE = 10000000; ;; 0.01 TON   
+
+;; Storage structure
+;; storage#_ channels:^Cell = Storage;
+
+cell pack_storage(cell channels) inline {
+  return begin_cell()
+    .store_dict(channels)
+    .end_cell();
+}
+
+(cell) unpack_storage(cell storage) inline {
+  slice cs = storage.begin_parse();
+  return (cs~load_dict());
+}
+
+cell empty_storage() inline {
+  return pack_storage(new_dict());
+}
+
+(int, slice, int, cell) load_data() inline {
+  slice ds = get_data().begin_parse();
+  return (
+    ds~load_uint(32),  ;; seqno
+    ds~load_msg_addr(),  ;; owner_address
+    ds~load_coins(),  ;; total_balance
+    ds~load_ref()  ;; channels
+  );
+}
+
+() save_data(int seqno, slice owner_address, int total_balance, cell channels) impure inline {
+  set_data(begin_cell()
+    .store_uint(seqno, 32)
+    .store_slice(owner_address)
+    .store_coins(total_balance)
+    .store_ref(channels)
+    .end_cell());
+}
+
+(slice, int, int, int) load_channel(cell channels, int channel_id) inline {
+  (cell channel_data, int success) = channels.udict_get?(32, channel_id);
+  throw_unless(35, success);
+  slice cs = channel_data.begin_parse();
+  return (
+    cs~load_msg_addr(),  ;; counterparty
+    cs~load_coins(),  ;; balance
+    cs~load_uint(64),  ;; last_update
+    cs~load_uint(1)  ;; is_initialized
+  );
+}
+
+cell save_channel(cell channels, int channel_id, slice counterparty, int balance, int last_update, int is_initialized) inline {
+  return channels.udict_set_builder(32, channel_id, begin_cell()
+    .store_slice(counterparty)
+    .store_coins(balance)
+    .store_uint(last_update, 64)
+    .store_uint(is_initialized, 1));
+}
+
+() send_tons(slice to_address, int amount, int mode) impure inline {
+  var msg = begin_cell()
+    .store_uint(0x10, 6)
+    .store_slice(to_address)
+    .store_coins(amount)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .end_cell();
+  send_raw_message(msg, mode);
+}
+
+() throw_if_not_owner() impure inline {
+  (int seqno, slice owner_address, int total_balance, cell channels) = load_data();
+  throw_unless(401, equal_slice_bits(owner_address, sender_addr()));
+}

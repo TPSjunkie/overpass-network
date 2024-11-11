@@ -1,0 +1,41 @@
+;; Close an existing payment channel
+() close_channel(slice payload) impure {
+  ;; Deserialize payload to get closure details
+  var (tx_op, tx_sender, tx_amount, tx_merkle_root, tx_timestamp, tx_id) = deserialize_transaction(payload);
+  
+  ;; Verify transaction
+  if (tx_op != OP_CLOSE_CHANNEL) {
+    return ();
+  }
+  
+  ;; Load current channel state
+  cell stored_channel = get_data();
+  var (status, participants, balances) = deserialize_channel_state(stored_channel);
+  
+  ;; Verify channel status and ownership
+  if ((status != STATUS_PENDING) | (tx_sender != participants.at(0))) {
+    return ();
+  }
+  
+  ;; Update channel balances based on closure
+  balances = balances.set(0, balances.at(0) + tx_amount);
+  balances = balances.set(1, balances.at(1) - tx_amount);
+  status = STATUS_COMPLETED;
+  var proof = serialize_merkle_proof(tx_merkle_root);
+  
+  ;; Serialize and store updated channel state
+  cell updated_channel = serialize_channel_state(status, participants, balances, proof);
+  set_data(updated_channel);
+  
+  ;; Update contract state
+  var (balance, seqno, last_tx_lt, last_tx_hash) = get_contract_state();
+  balance += tx_amount;
+  seqno += 1;
+  last_tx_lt = tx_timestamp;
+  last_tx_hash = tx_id;
+  
+  ;; Serialize and store updated contract state
+  set_contract_state(balance, seqno, last_tx_lt, last_tx_hash);
+  
+  return ();
+}

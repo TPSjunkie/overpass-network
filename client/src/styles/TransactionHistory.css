@@ -1,0 +1,58 @@
+.transaction-history {
+    border: 2px solid #7fff00;
+    border-radius: 5px;
+    padding: 1rem;
+    background-color: rgba(0, 255, 0, 0.05);
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+  }
+  
+  .transaction-list {
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #7fff00 #0a1a0a;
+  }
+  
+  .transaction-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .transaction-list::-webkit-scrollbar-track {
+    background: #0a1a0a;
+  }
+  
+  .transaction-list::-webkit-scrollbar-thumb {
+    background-color: #7fff00;
+    border-radius: 3px;
+  }
+  
+  .glow-text {
+    color: #7fff00;
+    text-shadow: 0 0 5px #7fff00;
+  }
+  
+  .glitch-text {
+    position: relative;
+    animation: glitch 1s infinite;
+  }
+  
+  @keyframes glitch {
+    0% {
+      transform: translate(0);
+    }
+    20% {
+      transform: translate(-2px, 2px);
+    }
+    40% {
+      transform: translate(-2px, -2px);
+    }
+    60% {
+      transform: translate(2px, 2px);
+    }
+    80% {
+      transform: translate(2px, -2px);
+    }
+    100% {
+      transform: translate(0);
+    }
+  }

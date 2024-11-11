@@ -1,0 +1,119 @@
+;; ./contracts_func/unilateral_channel.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/stdlib.fc";
+#include "./import_libs/op-codes.fc";
+#include "./import_libs/params.fc";
+
+;; Constants for operation codes
+const int op::submit_proof = 1;
+const int op::accept_transaction = 2;
+const int op::notify_recipient = 3;
+
+;; Error codes
+const int error::pending_transaction = 100;
+const int error::no_pending_transaction = 101;
+const int error::invalid_signature = 102;
+const int error::unknown_op = 103;
+
+;; Channel State Structure (includes pending transaction management)
+(int, int, int, slice, slice, int, cell) load_channel_data() inline {
+    var ds = get_data().begin_parse();
+    return (
+        ds~load_uint(64),  ;; virtual_balance (64 bits)
+        ds~load_uint(32),  ;; nonce (32 bits)
+        ds~load_uint(32),  ;; channel_id (32 bits)
+        ds~load_msg_addr(), ;; counterparty_address (267 bits)
+        ds~load_msg_addr(), ;; wallet_contract_address (267 bits)
+        ds~load_uint(1),    ;; pending_transaction_flag (1 bit)
+        ds~load_ref()       ;; pending_transaction_proof (cell of the transaction proof)
+    );
+}
+
+;; Function to get the public key
+int get_public_key() inline {
+    var cs = get_data().begin_parse();
+    cs~load_uint(64); ;; Skip virtual_balance
+    cs~load_uint(32); ;; Skip nonce
+    cs~load_uint(32); ;; Skip channel_id
+    cs~load_msg_addr(); ;; Skip counterparty_address
+    cs~load_msg_addr(); ;; Skip wallet_contract_address
+    cs~load_uint(1);    ;; Skip pending_transaction_flag
+    cs~load_ref();      ;; Skip pending_transaction_proof
+    return cs~load_uint(256); ;; Load and return the 256-bit public key
+}
+
+;; Handle proof submission
+() submit_proof(slice proof, slice signature) impure {
+    ;; Load the current state
+    (int virtual_balance, int nonce, int channel_id, slice counterparty_address, slice wallet_contract_address, int pending_flag, cell pending_proof) = load_channel_data();
+
+    ;; Ensure no other transaction is pending
+    throw_if(error::pending_transaction, pending_flag != 0);
+
+    ;; Verify the signature
+    cell signed_cell = begin_cell().store_slice(proof).end_cell();
+    throw_unless(error::invalid_signature, check_signature(cell_hash(signed_cell), signature, get_public_key()));
+
+    ;; Save the proof and mark the transaction as pending
+    save_data(virtual_balance, nonce, channel_id, counterparty_address, wallet_contract_address, 1, signed_cell);
+
+    ;; Notify the recipient to come online and sign the transaction
+    var notify_msg = begin_cell()
+        .store_uint(0x10, 6) ;; nobounce
+        .store_slice(counterparty_address)
+        .store_coins(0) ;; Send with zero value
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1) ;; Set other header fields
+        .store_uint(op::notify_recipient, 32) ;; Notify recipient to sign
+        .store_slice(proof) ;; Include proof for verification
+        .end_cell();
+
+    send_raw_message(notify_msg, 64);  ;; Send notification to recipient with mode 64 (carry remaining value)
+}
+
+;; Accept the transaction when the recipient signs it
+() accept_transaction(slice signature) impure {
+    ;; Load the current state
+    (int virtual_balance, int nonce, int channel_id, slice counterparty_address, slice wallet_contract_address, int pending_flag, cell pending_proof) = load_channel_data();
+
+    ;; Ensure there's a pending transaction
+    throw_if(error::no_pending_transaction, pending_flag == 0);
+
+    ;; Verify the recipient's signature
+    slice proof = pending_proof.begin_parse();
+    throw_unless(error::invalid_signature, check_signature(cell_hash(pending_proof), signature, slice_hash(counterparty_address)));
+
+    ;; Finalize the transaction and clear the pending state
+    save_data(virtual_balance, nonce, channel_id, counterparty_address, wallet_contract_address, 0, null());
+}
+;; Function to clear the pending transaction after acceptance
+() clear_pending_transaction() impure {
+    (int virtual_balance, int nonce, int channel_id, slice counterparty_address, slice wallet_contract_address, _, _) = load_channel_data();
+    
+    ;; Update the state with the cleared flag and empty pending proof
+    save_data(virtual_balance, nonce, channel_id, counterparty_address, wallet_contract_address, 0, begin_cell().end_cell());
+}
+
+;; Handle inbound messages
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    
+    slice cs = in_msg_body;
+    int op = cs~load_uint(32); ;; Operation code
+
+    if (op == op::submit_proof) {
+        slice proof = cs~load_ref().begin_parse();
+        slice signature = cs~load_ref().begin_parse();
+        submit_proof(proof, signature); ;; Handle proof submission
+    }
+    elseif (op == op::accept_transaction) {
+        slice signature = cs~load_ref().begin_parse();
+        accept_transaction(signature); ;; Handle recipient acceptance
+    }
+    else {
+        throw(error::unknown_op); ;; Unknown operation
+    }
+}

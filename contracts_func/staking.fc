@@ -1,0 +1,267 @@
+;; ./contracts/staking.fc
+
+#pragma version >=0.2.0;
+
+#include "./import_libs/stdlib.fc";
+
+;; ===========================================================
+;; 1. Constants and Variables
+;; ===========================================================
+
+;; Operation codes
+const int op::transfer_notification = 0x6b;       ;; Notification of jetton transfer
+const int op::stake_OP_JETTON = 0x7a;             ;; Stake OP jettons
+const int op::withdraw_OP_JETTON = 0x7b;          ;; Withdraw OP jettons
+const int op::claim_OP_JETTON = 0x7c;             ;; Claim OP jettons
+const int op::claim_TON = 0x7d;                   ;; Claim TON
+const int op::admin = 0x7e;                       ;; Admin operation  
+
+;; Error codes  
+const int error::not_staked = 0;                  ;; User not staked
+const int error::not_enough_jettons = 1;          ;; Not enough jettons
+const int error::not_enough_TON = 2;              ;; Not enough TON
+const int error::not_admin = 3;                   ;; Not admin
+const int error::jetton_sender = 4;               ;; Invalid jetton sender   
+
+;; ===========================================================
+;; 1. Jetton and TON Transfer Functions
+;; ===========================================================
+
+;; Calculates jetton wallet address
+slice calculate_jetton_wallet_address(slice owner_address, slice jetton_master_address, cell wallet_code) inline {
+    var code_hash = cell_hash(wallet_code);
+    return begin_cell()
+        .store_uint(0, 2)                    ;; anycast
+        .store_uint(0, 1)                    ;; workchain_id (0 for masterchain)
+        .store_uint(code_hash, 256)          ;; code_hash
+        .store_slice(jetton_master_address)
+        .store_slice(owner_address)
+        .end_cell().begin_parse();
+}
+
+;; Calculates the address of the user's jetton wallet
+slice calculate_user_jetton_wallet_address(slice user, slice jetton_master_address, cell jetton_wallet_code) inline {
+    return calculate_jetton_wallet_address(user, jetton_master_address, jetton_wallet_code);
+}   
+
+;; Sends a specific amount of jettons to a recipient
+() send_jetton(slice recipient, int amount, slice JETTON_MASTER_ADDRESS, cell JETTON_BYTE_CODE) impure inline {
+    if (amount == 0) {
+        return ();
+    }
+    slice jetton_wallet = calculate_jetton_wallet_address(my_address(), JETTON_MASTER_ADDRESS, JETTON_BYTE_CODE);
+
+    var msg = begin_cell()
+        .store_uint(0x10, 6)           ;; Internal message with no bounce
+        .store_slice(jetton_wallet)
+        .store_coins(100000000)        ;; 0.1 TON as a fixed fee
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
+        .store_maybe_ref(
+            begin_cell()
+                .store_uint(0xf8a7ea5, 32)  ;; op::transfer
+                .store_uint(0, 64)          ;; Query ID
+                .store_coins(amount)
+                .store_slice(recipient)
+                .store_slice(recipient)
+                .store_uint(0, 1)           ;; Forward TON amount
+                .store_coins(1)
+                .store_uint(0, 1)
+                .end_cell()
+        );
+    send_raw_message(msg.end_cell(), 1);    ;; Send message, paying fees
+}
+
+;; Sends a specific amount of TON to a recipient
+() send_ton(slice recipient, int amount, int mode) impure inline {
+    var msg = begin_cell()
+        .store_uint(0x10, 6)
+        .store_slice(recipient)
+        .store_coins(amount)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .end_cell();
+    send_raw_message(msg, mode);             ;; Send TON
+}
+
+;; Emits a log for events, storing event_id and associated data
+() emit_log_simple(int event_id, slice data) impure inline {
+    var msg = begin_cell()
+        .store_uint(12, 4)                   ;; External outbound message
+        .store_uint(1, 2)
+        .store_uint(256, 9)
+        .store_uint(event_id, 256)
+        .store_uint(0, 64 + 32 + 2)          ;; created_lt, created_at, init:Maybe, body:Either
+        .store_slice(data)
+        .end_cell();
+    send_raw_message(msg, 0);                ;; Send log
+}
+
+;; ===========================================================
+;; Helper Functions for Data Storage
+;; ===========================================================
+
+(cell, cell, cell) load_data() impure inline {
+    slice ds = get_data().begin_parse();
+    cell states = ds~load_ref();       ;; Load the states dictionary
+    cell jetton_info = ds~load_ref();  ;; Load jetton information
+    cell admin_info = ds~load_ref();   ;; Load admin information
+    return (states, jetton_info, admin_info);
+}
+
+() save_data(cell states, cell jetton_info, cell admin_info) impure inline {
+    set_data(
+        begin_cell()
+            .store_ref(states)        ;; Store the states dictionary
+            .store_ref(jetton_info)   ;; Store jetton information
+            .store_ref(admin_info)    ;; Store admin information
+            .end_cell()
+    );
+}
+
+;; ===========================================================
+;; 2. Handling Internal Messages (Staking, Withdrawing, Claiming)
+;; ===========================================================
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) {
+        return ();                            ;; Ignore bounced messages
+    }
+    slice sender_address = cs~load_msg_addr(); ;; Get sender address
+
+    ;; Load contract storage data
+    (cell states, cell jetton_info, cell admin_info) = load_data();
+    int op = in_msg_body~load_uint(32);       ;; Operation code
+    int query_id = in_msg_body~load_uint(64); ;; Query ID
+
+    ;; Handle jetton transfer notifications
+    if (op == op::transfer_notification) {
+        int send_amount = in_msg_body~load_coins(); ;; Jettons received
+
+        ;; Validate the sender's jetton wallet
+        slice jetton_info_slice = jetton_info.begin_parse();
+        slice jetton_master_address = jetton_info_slice~load_msg_addr();
+        cell JETTON_BYTECODE = jetton_info_slice~load_ref();
+        slice expected_wallet = calculate_jetton_wallet_address(my_address(), jetton_master_address, JETTON_BYTECODE);
+        throw_unless(error::jetton_sender, equal_slices(sender_address, expected_wallet));
+
+        slice origin_sender = in_msg_body~load_msg_addr();   ;; Original sender
+        cell creed_data = in_msg_body~load_ref();            ;; Additional data
+        slice creed_data_slice = creed_data.begin_parse();
+        int creed_id = creed_data_slice~load_uint(64);       ;; Creed ID
+        slice dict_key = begin_cell().store_slice(origin_sender).store_uint(creed_id, 64).end_cell().begin_parse();
+
+        ;; Update the staking amount for this user and creed
+        (slice data, int f) = udict_get?(states, 256, slice_hash(dict_key));
+        int jettonAmount = f == 0 ? 0 : data~load_coins();
+        slice new_data = begin_cell().store_coins(jettonAmount + send_amount).end_cell().begin_parse();
+        states = udict_set(states, 256, slice_hash(dict_key), new_data);
+
+        ;; Emit stake log and save the updated data
+        emit_log_simple(op::stake_OP_JETTON, begin_cell().store_uint(0, 4).store_slice(origin_sender).store_coins(send_amount).store_uint(creed_id, 64).end_cell().begin_parse());
+        save_data(states, jetton_info, admin_info);
+        return ();
+    }
+
+    ;; Handle jetton withdrawals
+    if (op == op::withdraw_OP_JETTON) {
+        int amount_to_withdraw = in_msg_body~load_coins();
+        int creed_id = in_msg_body~load_uint(64);
+        slice dict_key = begin_cell().store_slice(sender_address).store_uint(creed_id, 64).end_cell().begin_parse();
+
+        (slice data, int f) = udict_get?(states, 256, slice_hash(dict_key));
+        if (f == 0) {
+            throw(error::not_staked);          ;; User not staked
+        }
+        int jettonAmount = data~load_coins();
+        throw_unless(error::not_enough_jettons, jettonAmount >= amount_to_withdraw); ;; Check if user has enough jettons
+
+        ;; Send jettons back to user
+        slice jetton_info_slice = jetton_info.begin_parse();
+        slice jetton_master_address = jetton_info_slice~load_msg_addr();
+        cell JETTON_BYTECODE = jetton_info_slice~load_ref();
+        send_jetton(sender_address, amount_to_withdraw, jetton_master_address, JETTON_BYTECODE);
+
+        ;; Update user's stake after withdrawal
+        int new_jetton_amount = jettonAmount - amount_to_withdraw;
+        if (new_jetton_amount == 0) {
+            states = udict_set_builder(states, 256, slice_hash(dict_key), begin_cell());  ;; Remove entry if zero
+        } else {
+            slice new_data = begin_cell().store_coins(new_jetton_amount).end_cell().begin_parse();
+            states = udict_set(states, 256, slice_hash(dict_key), new_data);
+        }
+
+        ;; Emit withdrawal log and save the updated data
+        emit_log_simple(op::withdraw_OP_JETTON, begin_cell().store_uint(1, 4).store_coins(amount_to_withdraw).store_uint(creed_id, 64).end_cell().begin_parse());
+        save_data(states, jetton_info, admin_info);
+        return ();
+    }
+
+    ;; Handle admin claims for TON
+    if (op == op::claim_TON) {
+        slice admin_info_slice = admin_info.begin_parse();
+        slice admin_address = admin_info_slice~load_msg_addr();
+        throw_unless(error::not_admin, equal_slices(sender_address, admin_address)); ;; Check if sender is admin
+
+        send_ton(sender_address, my_balance - 1000000000, 1); ;; Send available balance minus 1 TON
+        return ();
+    }
+
+    ;; Handle admin claims for OP jettons
+    if (op == op::claim_OP_JETTON) {
+        int amount_to_withdraw = in_msg_body~load_coins();
+        slice admin_info_slice = admin_info.begin_parse();
+        slice admin_address = admin_info_slice~load_msg_addr();
+        throw_unless(error::not_admin, equal_slices(sender_address, admin_address)); ;; Check if sender is admin
+
+        ;; Send OP jettons to admin
+        slice jetton_info_slice = jetton_info.begin_parse();
+        slice jetton_master_address = jetton_info_slice~load_msg_addr();
+        cell JETTON_BYTECODE = jetton_info_slice~load_ref();
+        send_jetton(sender_address, amount_to_withdraw, jetton_master_address, JETTON_BYTECODE);
+        return ();
+    }
+
+    ;; Throw error for unknown operations
+    throw(0xffff);
+}
+
+;; ===========================================================
+;; 3. Get Methods
+;; ===========================================================
+
+;; Returns the staking amounts for a user across multiple creeds
+(tuple) get_user_state(slice user, tuple creeds) method_id {
+    (cell states, _, _) = load_data();
+    (slice data, int f) = udict_get?(states, 256, slice_hash(user));
+    if (f == 0) {
+        return empty_tuple();
+    }
+    int jettonAmount = data~load_coins();
+    tuple state = empty_tuple();
+    state~tpush(jettonAmount);
+    state~tpush(0);
+    state~tpush(0);
+    state~tpush(0);
+    while (~ null?(creeds)) {
+        tuple creed = creeds.first();
+        int creed_id = creed.at(0);
+        int amount = creed.at(1);
+        creeds = creeds.second();
+        (slice data, int f) = udict_get?(states, 256, slice_hash(user));
+        if (f == 0) {
+            return state;
+        }
+        int jettonAmount = data~load_coins();
+        state = empty_tuple()
+            .tpush(state.at(0) + jettonAmount)
+            .tpush(state.at(1) + amount)
+            .tpush(state.at(2) + amount)
+            .tpush(state.at(3) + amount);
+    }
+    return state;
+}
