@@ -1,20 +1,10 @@
 import type { WalletInfo } from '@tonconnect/sdk';
-import { 
-  TonConnectUI,
-  type WalletInfoRemote,
-} from '@tonconnect/ui-react';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import MarketView from "./components/MarketView";
-import * as Ton from '@ton/ton';
+import { TonConnectUI } from "@tonconnect/ui-react";
 import { Cell } from "@ton/core";
 import { Address } from "@ton/core";
-import { getHttpEndpoint } from '@orbs-network/ton-access';
-import { Copy } from 'lucide-react';
-import ChannelControls from './components/ChannelControls';
-import AudioPlayer from './components/AudioPlayer';
-import AudioControl from './components/AudioControl';
+import { getHttpEndpoint } from '@orbs-network/ton-access';import AudioPlayer from './components/AudioPlayer';
 import { useAudio } from './hooks/useAudio';
-import { toast } from 'react-toastify';
 
 // Types
 type MenuScreen = 'main' | 'send' | 'receive' | 'tokens' | 'wallets' | 'channels' | 'channelSettings' | 'transactions' | 'settings' | 'market';
