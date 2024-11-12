@@ -1,7 +1,7 @@
 // global_tree_manager.rs
 use crate::core::error::errors::SystemError;
 use crate::core::zkps::proof::ZkProof;
-use blake2::{Blake2b, Digest};
+use blake2::{Blake2b512, Digest};
 
 #[derive(Debug)]
 pub struct GlobalTreeManager {
@@ -46,11 +46,12 @@ impl GlobalTreeManager {
     }
 
     fn hash_combine(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-        let mut hasher = Blake2b::<typenum::U32>::new();
+        let mut hasher = Blake2b512::new();
         hasher.update(left);
         hasher.update(right);
+        let result = hasher.finalize();
         let mut output = [0u8; 32];
-        output.copy_from_slice(hasher.finalize().as_slice());
+        output.copy_from_slice(&result[..32]);
         output
     }
 }
