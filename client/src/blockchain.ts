@@ -11,7 +11,7 @@ export async function getChannelState(
   channelId: string,
   client: TonClient,
 ): Promise<any> {
-  const channelAddress = channelManager.getChannelAddress(channelId);
+  const channelAddress = channelManager.getChannelAddress(channelId, client);
   if (!channelAddress) {
     throw new Error(`Channel with ID ${channelId} not found`);
   }
@@ -25,7 +25,7 @@ export async function getChannelBalance(
   channelId: string,
   client: TonClient,
 ): Promise<number> {
-  const channelAddress = channelManager.getChannelAddress(channelId);
+  const channelAddress = channelManager.getChannelAddress(channelId, client);
   if (!channelAddress) {
     throw new Error(`Channel with ID ${channelId} not found`);
   }
@@ -33,9 +33,16 @@ export async function getChannelBalance(
     Address.parse(channelAddress),
   );
   const balance = channelData.balance;
-  return fromNano(balance.toString());
+  return Number(fromNano(balance.toString()));
 }
-export async function getChannelAddress(
-  channelId: string,
-  client: TonClient,
-)
+export async function getChannelTransactions( 
+  channelId: string,  
+  client: TonClient, 
+): Promise<any[]> {
+  const channelAddress = channelManager.getChannelAddress(channelId, client);
+  if (!channelAddress) {
+    throw new Error(`Channel with ID ${channelId} not found`);
+  }
+  const channelData = await client.getTransactions(Address.parse(channelAddress), { limit: 20 });
+  return channelData;
+}
