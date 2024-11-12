@@ -187,10 +187,10 @@ const App = () => {
       const endpoint = await getHttpEndpoint({
         network: currentNetwork === 'ton-mainnet' ? 'mainnet' : 'testnet'
       });
-      const client = new Ton.TonClient({ endpoint });
+      const client = new TonClient({ endpoint });
       const txs = await client.getTransactions(Address.parse(address), { limit: 20 });
       
-      const formattedTxs: Transaction[] = txs.map((tx) => {
+      const formattedTxs: Transaction[] = txs.map((tx: { inMessage: { info: { dest: { toString: () => string; }; value: { toString: () => any; }; src: { toString: () => any; }; }; }; outMessages: { info: { dest: { toString: () => any; }; }; }[]; hash: { toString: () => any; }; now: number; }) => {
         const isIncoming = tx.inMessage?.info?.dest?.toString() === address;
         const amount = isIncoming 
           ? tx.inMessage?.info?.value?.toString() || '0'
