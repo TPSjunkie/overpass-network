@@ -61,10 +61,30 @@ pub struct BitcoinProofBoc {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BitcoinProofBundle {
     pub proof: BitcoinZkProof,
+    #[serde(with = "bitcoin_proof_metadata_serde")]
     pub metadata: BitcoinProofMetadata,
 }
 
-/// Bitcoin proof verifier
+mod bitcoin_proof_metadata_serde {
+    use super::BitcoinProofMetadata;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(metadata: &BitcoinProofMetadata, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bytes = bincode::serialize(metadata).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_bytes(&bytes)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<BitcoinProofMetadata, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes = Vec::<u8>::deserialize(deserializer)?;
+        bincode::deserialize(&bytes).map_err(serde::de::Error::custom)
+    }
+}/// Bitcoin proof verifier
 pub struct BitcoinProofVerifier<F: RichField> {
     config: CircuitConfig,
     _marker: std::marker::PhantomData<F>,
