@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from 'react';
+import React, { useState, type FormEvent } from 'react';
 
 interface JoinChannelFormProps {
   onJoinChannel: (channelId: string) => void;
