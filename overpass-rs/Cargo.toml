@@ -76,6 +76,7 @@ aes = { version = "0.7.5"}
 aes-gcm = "0.10.3"
 sha2 = "0.10.7"
 sha3 = "0.10.7"
+cipher = "0.4.4"
 hex = "0.4.3"
 keccak-hash = "0.10.0"
 rand = { version = "0.8", features = ["getrandom"] }

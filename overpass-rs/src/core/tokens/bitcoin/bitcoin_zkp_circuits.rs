@@ -1,22 +1,17 @@
 // ./src/core/tokens/bitcoin/bitcoin_zkp_circuits.rs
+use plonky2_field::types::Field;
+use cipher::typenum::private::IsEqualPrivate;
 use core::marker::PhantomData;
 use plonky2::{
-    field::{extension::Extendable, goldilocks_field::GoldilocksField},
-    hash::{hash_types::RichField, poseidon::PoseidonHash},
+    field::goldilocks_field::GoldilocksField,
     plonk::{
-        circuit_builder::CircuitBuilder,
         circuit_data::CircuitConfig,
         config::PoseidonGoldilocksConfig,
     },
-    iop::witness::{PartialWitness, WitnessWrite},
 };
 
-use crate::core::tokens::zkp::{
-    VirtualCell,
-    ZkCircuitBuilder,
-    Circuit,
-    ProofType,
-};
+
+use crate::core::zkps::circuit_builder::{VirtualCell, Circuit, ZkCircuitBuilder};
 
 type F = GoldilocksField;
 const D: usize = 2;
@@ -79,10 +74,8 @@ impl<T> BitcoinZkpCircuits<T> {
         builder.assert_equal(nullifier, computed_nullifier);
 
         // Build the circuit
-        builder.build()
-    }
-
-    /// Build multi-signature transaction circuit
+        builder.build().map_err(|e| e.to_string())
+    }    /// Build multi-signature transaction circuit
     pub fn build_multisig_circuit(
         &self,
         builder: &mut ZkCircuitBuilder<F, D>,
@@ -112,9 +105,8 @@ impl<T> BitcoinZkpCircuits<T> {
         }
 
         // Build circuit
-        builder.build()
+        builder.build().map_err(|e| e.to_string())
     }
-
     /// Build time-locked transaction circuit
     pub fn build_timelock_circuit(
         &self,
@@ -141,18 +133,16 @@ impl<T> BitcoinZkpCircuits<T> {
         builder.assert_one(time_valid);
 
         // Verify commitment
-        let computed_commitment = self.compute_timelock_commitment(
+        let computed_commitment = self.compute_pedersen_commitment(
             builder,
             amount,
-            recipient_key,
-            lock_time
+            recipient_key
         );
         builder.assert_equal(commitment, computed_commitment);
 
         // Build circuit
-        builder.build()
+        builder.build().map_err(|e| e.to_string())
     }
-
     /// Build ring signature circuit for enhanced privacy
     pub fn build_ring_signature_circuit(
         &self,
@@ -172,43 +162,35 @@ impl<T> BitcoinZkpCircuits<T> {
             .map(|_| builder.add_witness())
             .collect::<Vec<_>>();
 
-        // Compute ring signature
-        let signature = self.compute_ring_signature(
-            builder,
-            &ring_members,
-            message,
-            signer_position,
-            private_key,
-            &random_values
-        );
+        // Compute ring signature components
+        let mut ring_signature = builder.constant(F::ZERO);
+        for (i, member) in ring_members.iter().enumerate() {
+            let random = random_values[i];
+            let hash_input = vec![*member, message, random];
+            let hash = builder.poseidon(&hash_input);
+            
+            let is_signer = builder.is_equal_private(signer_position, builder.constant(F::from(plonky2_field::goldilocks_field::GoldilocksField(i as u64))));
+            let contribution = builder.select(is_signer, 
+                builder.add(hash, private_key),
+                hash
+            );
+            ring_signature = builder.add(ring_signature, contribution);
+        }
 
         // Verify signature is valid for the ring
-        let is_valid = self.verify_ring_signature(
+        let is_valid = self.verify_schnorr_signature(
             builder,
-            &ring_members,
-            message,
-            &signature
+            ring_members[0],
+            ring_signature,
+            message
         );
         builder.assert_one(is_valid);
 
         // Build circuit
-        builder.build()
+        builder.build().map_err(|e| e.to_string())
     }
 
-    // Helper functions for cryptographic operations
-
-    fn compute_pedersen_commitment(
-        &self,
-        builder: &mut ZkCircuitBuilder<F, D>,
-        value: VirtualCell,
-        blind: VirtualCell,
-    ) -> VirtualCell {
-        let inputs = vec![value, blind];
-        builder.poseidon(&inputs)
-    }
-
-    fn compute_nullifier(
-        &self,
+    fn compute_nullifier(        &self,
         builder: &mut ZkCircuitBuilder<F, D>,
         private_key: VirtualCell,
         commitment: VirtualCell,
@@ -222,9 +204,9 @@ impl<T> BitcoinZkpCircuits<T> {
         builder: &mut ZkCircuitBuilder<F, D>,
         signatures: &[VirtualCell],
     ) -> VirtualCell {
-        let mut count = builder.constant(0);
+        let mut count = builder.constant(F::ZERO);
         for sig in signatures {
-            let is_valid = self.is_signature_valid(builder, *sig);
+            let is_valid = self.verify_schnorr_signature(builder, *sig, *sig, *sig);
             count = builder.add(count, is_valid);
         }
         count
@@ -236,15 +218,11 @@ impl<T> BitcoinZkpCircuits<T> {
         public_key: VirtualCell,
         signature: VirtualCell,
         message: VirtualCell,
-    ) {
+    ) -> VirtualCell {
         let inputs = vec![public_key, signature, message];
         let hash = builder.poseidon(&inputs);
-        let computed_sig = self.compute_schnorr_signature(
-            builder,
-            public_key,
-            message
-        );
-        builder.assert_equal(hash, computed_sig);
+        let is_valid = builder.is_equal_private(hash, signature);
+        is_valid
     }
 
     fn verify_timelock(
@@ -255,8 +233,8 @@ impl<T> BitcoinZkpCircuits<T> {
         unlock_condition: VirtualCell,
     ) -> VirtualCell {
         let time_diff = builder.sub(current_time, lock_time);
-        let is_time_valid = builder.is_zero(time_diff);
-        let is_condition_met = builder.is_one(unlock_condition);
+        let is_time_valid = builder.is_equal_private(time_diff, builder.constant(F::ZERO));
+        let is_condition_met = builder.is_equal_private(unlock_condition, builder.constant(F::ONE));
         builder.mul(is_time_valid, is_condition_met)
     }
 

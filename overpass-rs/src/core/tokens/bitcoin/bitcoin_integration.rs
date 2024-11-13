@@ -7,8 +7,7 @@ use frame_support::{
     Parameter,
 };
 use sp_runtime::{
-    traits::MaybeSerializeDeserialize,
-    DispatchError, DispatchResult,
+    traits::MaybeSerializeDeserialize, DispatchResult,
 };
 
 use super::bitcoin_types::{
@@ -58,7 +57,7 @@ where
                 T::NativeCurrency::deposit_creating(who, amount.into());
                 Ok(())
             },
-            _ => Err(BitcoinError::InvalidNetwork("Unsupported network".into()).into()),
+            _ => Err(sp_runtime::DispatchError::Other("Unsupported network")),
         }
     }
 
@@ -80,7 +79,7 @@ where
                 )?;
                 Ok(())
             },
-            _ => Err(BitcoinError::InvalidNetwork("Unsupported network".into()).into()),
+            _ => Err(sp_runtime::DispatchError::Other("Unsupported network")),
         }
     }
     /// Transfer Bitcoin between accounts
@@ -100,10 +99,9 @@ where
                     ExistenceRequirement::KeepAlive,
                 )
             },
-            _ => Err(BitcoinError::InvalidNetwork("Unsupported network".into()).into()),
+            _ => Err(sp_runtime::DispatchError::Other("Unsupported network")),
         }
     }
-
     /// Slash an account's balance
     pub fn slash(
         &self,
@@ -249,14 +247,14 @@ where
         fn deposit_into_existing(
             _who: &u64,
             _amount: Self::Balance
-        ) -> Result<Self::PositiveImbalance, DispatchError> { Ok(()) }
+        ) -> Result<Self::PositiveImbalance, sp_runtime::DispatchError> { Ok(()) }
 
         fn withdraw(
             _who: &u64,
             _amount: Self::Balance,
             _reasons: WithdrawReasons,
             _liveness: ExistenceRequirement,
-        ) -> Result<Self::NegativeImbalance, DispatchError> { Ok(()) }
+        ) -> Result<Self::NegativeImbalance, sp_runtime::DispatchError> { Ok(()) }
 
         fn deposit_creating(_who: &u64, _amount: Self::Balance) -> Self::PositiveImbalance { () }
         

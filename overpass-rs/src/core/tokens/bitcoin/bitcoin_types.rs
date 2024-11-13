@@ -1,10 +1,12 @@
 // ./src/core/tokens/bitcoin/bitcoin_types.rs
-use codec::{Decode, Encode};
-use sp_runtime::{
+
+
+pub use codec::{Decode, Encode};
+pub use sp_runtime::{
     traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize},
     DispatchError,
 };
-use scale_info::TypeInfo;
+pub use scale_info::TypeInfo;
 
 /// Network types supported by the Bitcoin integration
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
@@ -34,7 +36,6 @@ impl From<u8> for BitcoinNetwork {
         }
     }
 }
-
 /// Common constants for Bitcoin networks
 pub const BITCOIN_MAINNET: u8 = 0;
 pub const BITCOIN_TESTNET: u8 = 1;
@@ -73,17 +74,6 @@ pub enum BitcoinError {
     ProofVerificationFailed(String),
 }
 
-impl From<BitcoinError> for DispatchError {
-    fn from(error: BitcoinError) -> Self {
-        match error {
-            BitcoinError::InsufficientBalance(msg) => DispatchError::Other(msg.as_str()),
-            BitcoinError::InvalidNetwork(msg) => DispatchError::Other(msg.as_str()),
-            BitcoinError::InvalidTransaction(msg) => DispatchError::Other(msg.as_str()),
-            BitcoinError::InvalidAccount(msg) => DispatchError::Other(msg.as_str()),
-            BitcoinError::ProofVerificationFailed(msg) => DispatchError::Other(msg.as_str()),
-        }
-    }
-}
 
 /// Trait for Bitcoin balance operations
 pub trait BitcoinBalance: AtLeast32BitUnsigned + MaybeSerializeDeserialize {

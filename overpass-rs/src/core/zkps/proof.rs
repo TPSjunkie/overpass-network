@@ -27,7 +27,10 @@ pub struct ProofMetadata {
     pub channel_id: Option<[u8; 32]>,
     pub created_at: u64,
     pub verified_at: Option<u64>,
+    pub(crate) version: i32,
+    pub(crate) height_bounds: (u64, u64),
 }
+
 
 // Bundle of proof with its metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -181,13 +184,14 @@ impl ProofGenerator {
                 channel_id: channel_id_array,
                 created_at: current_timestamp(),
                 verified_at: None,
+                version: todo!(),
+                height_bounds: todo!(),
             },
         };
 
         serde_wasm_bindgen::to_value(&bundle)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize proof bundle: {}", e)))
     }
-
     pub fn verify_state_transition(
         &self,
         bundle_js: &JsValue,

@@ -9,17 +9,13 @@ use sp_runtime::{DispatchError, DispatchResult};
 
 use crate::core::tokens::bitcoin::bitcoin_types::{BitcoinError, BitcoinNetwork};
 use crate::core::tokens::bitcoin::bitcoin_integration::{Bitcoin, BitcoinConfig};
-use crate::core::tokens::zkp::{
-    ProofMetadata,
-    ProofType,
-    ZkProof,
-    ZkProofBoc,
-    ZkProofSlice,
-    plonky2::{
-        Plonky2System,
-        Plonky2SystemHandle,
-        ZkCircuitBuilder,
-    },
+use crate::core::zkps::proof::{ProofMetadata, ProofType, ZkProof};
+use crate::core::zkps::bitcoin_proof::ZkProofBoc;
+use crate::core::zkps::plonky2::ZkProofSlice;
+use crate::core::zkps::plonky2::{
+    Plonky2System,
+    Plonky2SystemHandle,
+    ZkCircuitBuilder,
 };
 
 /// Manager for Bitcoin operations with zero-knowledge proof integration
@@ -65,16 +61,16 @@ where
                 1, // new nonce
                 amount.try_into().map_err(|_| BitcoinError::InvalidTransaction("Amount conversion failed".into()))?,
             )
-            .map_err(|e| BitcoinError::ProofGenerationFailed(format!("Failed to generate proof: {:?}", e)))?;
+            .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Failed to generate proof: {:?}", e)))?;
 
         // Create ZkProofBoc with the generated proof
         let boc = ZkProofBoc {
             proof_data: proof_bytes,
             vk_hash: self.calculate_verification_key_hash(metadata.proof_type)?,
             public_inputs: vec![
-                old_balance.to_le_bytes().to_vec(),
-                new_balance.to_le_bytes().to_vec(),
-                amount.to_le_bytes().to_vec(),
+                old_balance.encode(),
+                new_balance.encode(),
+                amount.encode(),
             ].concat(),
             auxiliary_data: vec![], // Additional data if needed
         };
@@ -89,9 +85,7 @@ where
         let deposit_result = self.bitcoin.deposit(self.network, who, amount);
 
         Ok((deposit_result, proof_slice))
-    }
-
-    /// Generate a proof for a withdrawal operation
+    }    /// Generate a proof for a withdrawal operation
     pub async fn withdraw_with_proof(
         &self,
         who: &T::AccountId,
