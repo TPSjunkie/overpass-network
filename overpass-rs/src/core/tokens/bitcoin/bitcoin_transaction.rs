@@ -14,7 +14,7 @@ use sp_runtime::{
 use crate::core::tokens::bitcoin::bitcoin_types::{
     BitcoinAccountData, BitcoinError, BitcoinNetwork, BitcoinTransactionData,
 };
-use crate::core::tokens::zkp::{ProofMetadata, ZkProofBoc, ZkProofSlice};
+use crate::core::zkps::proof::{ProofMetadata, ZkProofBoc, ZkProofSlice};
 
 /// Transaction status enumeration
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]

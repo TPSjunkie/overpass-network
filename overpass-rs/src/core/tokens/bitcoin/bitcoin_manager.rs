@@ -1,4 +1,5 @@
 // ./src/core/tokens/bitcoin/bitcoin_manager.rs
+use crate::core::tokens::bitcoin::bitcoin_transaction::VerificationResult;
 use codec::{Decode, Encode};
 use core::marker::PhantomData;
 use frame_support::{
@@ -46,8 +47,11 @@ where
         // Create proof metadata
         let metadata = ProofMetadata {
             version: 1,
-            proof_type: ProofType::Deposit,
-            height_bounds: Default::default(),
+            proof_type: ProofType::Mint,
+            zkp_slice_height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
         // Generate proof and perform deposit
@@ -58,7 +62,6 @@ where
 
         Ok((deposit_result, proof))
     }
-
     /// Process a withdrawal with zero-knowledge proof
     pub async fn process_withdrawal_with_proof(
         &self,
@@ -71,6 +74,9 @@ where
             version: 1,
             proof_type: ProofType::Withdrawal,
             height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
         // Generate proof and perform withdrawal
@@ -95,6 +101,9 @@ where
             version: 1,
             proof_type: ProofType::Transfer,
             height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
         // Generate proof and perform transfer
@@ -130,7 +139,22 @@ where
             .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Proof verification failed: {:?}", e)))
     }
 
-    // ... rest of the BitcoinManager implementation ...
+    // Helper function to create a transaction
+    fn create_transaction(
+        &self,
+        network: BitcoinNetwork,
+        from: &T::AccountId,
+        to: &T::AccountId,
+        amount: T::Balance,
+    ) -> Result<BitcoinTransaction<T::Balance>, BitcoinError> where <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance> where <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance> {
+        // Create transaction data
+        let tx_data = self.bitcoin.create_transaction(network, from, to, amount)?;
+
+        // Create transaction
+        BitcoinTransaction::new(tx_data, None)
+    }
+
+    
 }
 
 #[cfg(test)]
@@ -204,6 +228,9 @@ mod tests {
             version: 1,
             proof_type: ProofType::Transfer,
             height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
         // Create a proof slice (in real implementation this would come from proof generation)

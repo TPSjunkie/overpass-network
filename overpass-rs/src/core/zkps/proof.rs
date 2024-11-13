@@ -1,6 +1,3 @@
-use frame_support::pallet_prelude::TypeInfo;
-use codec::Decode;
-use codec::Encode;
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::zkps::plonky2::Plonky2SystemHandle;
 use plonky2::hash::hash_types::RichField;
@@ -15,39 +12,6 @@ pub struct ZkProof {
     pub merkle_root: Vec<u8>,
     pub timestamp: u64,
 }
-
-//  ZkProofSlice - Slice of a ZK proof  
-#[derive(Clone, Debug, Encode, Decode, TypeInfo)]
-pub struct ZkProofSlice {
-    pub boc_hash: [u8; 32],
-    pub metadata:  ZkpSliceMetadata,
-}
-
-// Proof metadata for tracking context
-#[derive(Clone, Debug, Encode, Decode, TypeInfo)]
-pub struct ZkpSliceMetadata {
-    pub version: u8,
-    pub proof_type:    ZkpSliceProofT,
-    pub height_bounds:  ZkpSliceHeightBounds,
-}
-
-// Proof type
-#[derive(Clone, Copy, Debug, Encode, Decode, TypeInfo)]
-pub enum ZkpSliceProofT {
-    Deposit = 1,
-    Withdrawal = 2,
-    Transfer = 3,
-}
-
-// Height bounds for proof verification
-#[derive(Clone, Copy, Debug, Encode, Decode, TypeInfo)]
-pub struct ZkpSliceHeightBounds {
-    pub min_height: u32,
-    pub max_height: u32,
-}
-
-
-
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ProofType {
