@@ -1,6 +1,6 @@
 // src/components/ErrorBoundary.tsx
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { toast } from 'react-toastify';
 
 interface Props {
@@ -12,7 +12,7 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
+  public override state: State = {
     hasError: false,
   };
 
@@ -21,12 +21,12 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
     toast.error("An unexpected error occurred.");
   }
 
-  public render() {
+  public override render() {
     if (this.state.hasError) {
       return <h1 className="text-pip-boy-text text-center mt-20">Something went wrong.</h1>;
     }
