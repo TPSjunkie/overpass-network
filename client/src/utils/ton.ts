@@ -1,7 +1,9 @@
 // src/utils/ton.ts
 
 
-interface Cell {}
+interface Cell {
+  toBoc(): unknown;
+}
 
 interface CellBuilder {
   storeAddress(address: string): CellBuilder;
