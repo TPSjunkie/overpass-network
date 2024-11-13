@@ -116,19 +116,20 @@ const App = () => {
       const endpoint = await getHttpEndpoint({
         network: currentNetwork === 'ton-mainnet' ? 'mainnet' : 'testnet',
       });
-      const client = new TonClient({ endpoint });
+      const { TonClient, Address } = require('@ton/ton');
+      const tonClientInstance = new TonClient({ endpoint });
       const addressObj = Address.parse(address);
-      const transactions = await client.getTransactions(addressObj, { limit: 100 });
+      const transactions = await tonClientInstance.getTransactions(addressObj, { limit: 100 });
       console.log(transactions);
 
       const tokens: Token[] = []; 
-        const processedAddresses = new Set<string>();
+      const processedAddresses = new Set<string>();
 
       for (const tx of transactions) {
         const infoValue = tx.inMessage?.info?.value;
         const msgBody = tx.inMessage?.body;
         
-        if (msgBody instanceof Cell && infoValue) {
+        if (msgBody && typeof msgBody === 'object' && 'beginParse' in msgBody && infoValue) {
           const slice = msgBody.beginParse();
           const bufferLength = Math.floor(slice.bits.length / 8);
           const buffer = slice.loadBuffer(bufferLength);
@@ -139,13 +140,13 @@ const App = () => {
             if (tokenAddress && !processedAddresses.has(tokenAddress)) {
               try {
                 const tokenContract = Address.parse(tokenAddress);
-                const tokenData = await client.runMethod(tokenContract, 'get_token_data', []);
+                const tokenData = await tonClientInstance.runMethod(tokenContract, 'get_token_data', []);
                 
                 if (tokenData.stack && Array.isArray(tokenData.stack)) {
                   const symbol = tokenData.stack[0]?.value?.toString() || 'Unknown Token';
                   const decimals = parseInt(tokenData.stack[1]?.value?.toString() || '0', 10);
 
-                  const balanceData = await client.runMethod(
+                  const balanceData = await tonClientInstance.runMethod(
                     tokenContract,
                     'get_wallet_data',
                     []
@@ -168,7 +169,7 @@ const App = () => {
         }
       }
 
-      const tonBalance = await client.getBalance(addressObj);
+      const tonBalance = await tonClientInstance.getBalance(addressObj);
       tokens.unshift({
         symbol: "TON",
         balance: (Number(tonBalance) / 1e9).toString()

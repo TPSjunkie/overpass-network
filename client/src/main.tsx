@@ -1,19 +1,17 @@
 // src/main.tsx
 import { createRoot } from "react-dom/client";
-import { TonClient } from "@ton/ton";
+
 import App from "./App";
 import "./index.css";
 
-const client = new TonClient({
+const tonClient = new TonClient({
   endpoint: "https://toncenter.com/api/v2/jsonRPC"
 });
-
 const initWasm = async () => {
   const wasmModule = await import('@/wasm/overpass_rs');
-  await wasmModule.init();
+  await wasmModule.default.init();
   return wasmModule;
 };
-
 const init = async () => {
   try {
     await initWasm();
