@@ -1,6 +1,6 @@
 import type { WalletInfo } from '@tonconnect/sdk';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Cell, Address } from "@ton/core";
+import { Cell, Address } from "@ton/ton";
 import AudioPlayer from './components/AudioPlayer';
 import { useAudio } from './hooks/useAudio';
 import { TonConnectUI } from '@tonconnect/ui-react';
