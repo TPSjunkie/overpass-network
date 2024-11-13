@@ -4,8 +4,7 @@ import AudioPlayer from './components/AudioPlayer';
 import { useAudio } from './hooks/useAudio';
 import { TonConnectUI } from '@tonconnect/ui-react';
 import { getHttpEndpoint } from '@orbs-network/ton-access';
-import { Address, TonClient } from '@ton/ton';
-import { Cell } from '@ton/core';
+
 
 type MenuScreen = 'main' | 'send' | 'receive' | 'tokens' | 'wallets' | 'channels' | 'channelSettings' | 'transactions' | 'settings' | 'market';
 
@@ -119,10 +118,11 @@ const App = () => {
       });
       const client = new TonClient({ endpoint });
       const addressObj = Address.parse(address);
-      const transactions = await client.getTransactions(addressObj, { limit: 50 });
+      const transactions = await client.getTransactions(addressObj, { limit: 100 });
+      console.log(transactions);
 
-      const tokens: Token[] = [];
-      const processedAddresses = new Set<string>();
+      const tokens: Token[] = []; 
+        const processedAddresses = new Set<string>();
 
       for (const tx of transactions) {
         const infoValue = tx.inMessage?.info?.value;
@@ -191,10 +191,10 @@ const App = () => {
       const endpoint = await getHttpEndpoint({
         network: currentNetwork === 'ton-mainnet' ? 'mainnet' : 'testnet'
       });
-      const client = new TonClient({ endpoint });
-      const txs = await client.getTransactions(Address.parse(address), { limit: 20 });
+      const tonClient = new TonClient({ endpoint });
+      const txs = await tonClient.getTransactions(Address.parse(address), { limit: 20 });
 
-      const formattedTxs = txs.map((tx) => {
+      const formattedTxs = txs.map((tx: { inMessage: { info: { dest: { toString: () => string; }; value: { toString: () => any; }; src: { toString: () => any; }; }; }; outMessages: { info: { dest: { toString: () => any; }; }; }[]; hash: { toString: () => any; }; now: number; }) => {
         const isIncoming = tx.inMessage?.info?.dest?.toString() === address;
         const amount = isIncoming 
           ? tx.inMessage?.info?.value?.toString() || '0'
@@ -230,8 +230,8 @@ const App = () => {
       const endpoint = await getHttpEndpoint({
         network: currentNetwork === 'ton-mainnet' ? 'mainnet' : 'testnet'
       });
-      const client = new TonClient({ endpoint });
-      const balanceValue = await client.getBalance(Address.parse(address));
+      const client = new client({ endpoint });
+      const balanceValue = await client.getBalance(address.parse(address));
       setBalance((Number(balanceValue) / 1e9).toFixed(2));
     } catch (error) {
       console.error('Error fetching balance:', error);
