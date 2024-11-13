@@ -4,7 +4,7 @@ import AudioPlayer from './components/AudioPlayer';
 import { useAudio } from './hooks/useAudio';
 import { TonConnectUI } from '@tonconnect/ui-react';
 import { getHttpEndpoint } from '@orbs-network/ton-access';
-import wasmInit, { init_panic_hook, initiate_transaction } from '@wasm/overpass_rs';
+import { init_panic_hook, initiate_transaction} from '@wasm/overpass_rs';
 import { BackendApi } from './wasm/api';
 import { Address, TonClient } from '@ton/ton';
 
@@ -115,8 +115,10 @@ export const App = () => {
             try {
               const channelId = "test-channel";
               const messageCell = "test-message";
-              const keyPair = {}; // Replace with actual key pair
-              const result = await initiate_transaction(
+                          const keyPair = {
+                            publicKey: new Uint8Array(32),
+                            secretKey: new Uint8Array(64)
+                          };              const result = await initiate_transaction(
                 channelId,
                 messageCell,
                 keyPair,

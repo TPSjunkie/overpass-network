@@ -16,8 +16,8 @@ const init = async () => {
     const rootElement = document.getElementById("root");
     if (!rootElement) throw new Error("Root element not found");
     
-    const root = createRoot(rootElement);
-    root.render(<React.StrictMode><App /></React.StrictMode>)
+    const root = createRoot(rootElement!);
+    root
   } catch (error) {
     console.error('Failed to initialize app:', error);
     document.body.innerHTML = '<div class="error-message">Failed to load application. Please check console for details.</div>';
