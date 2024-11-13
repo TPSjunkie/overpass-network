@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     // Language and Environment
+  
     "target": "ESNext",
     "lib": [
       "DOM",
@@ -80,7 +81,7 @@
       "vite/client",
       "react",
       "react-dom",
-      "jest"
+      "@types/jest"
     ]
   },
   "include": [

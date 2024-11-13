@@ -1,7 +1,7 @@
 // ./src/core/tokens/bitcoin_integration.rs
 // This file is part of the Overpass Network.
 
-// Copyright (C) 2020-2021 Overpass Network.
+// Copyright (C) 2024 Overpass Network.
 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,15 +30,22 @@ use core::marker::PhantomData;
 use frame_support::{
     pallet_prelude::Member, traits::{Currency, ExistenceRequirement, Imbalance, WithdrawReasons}, Parameter
 };
-use sp_runtime::traits::AtLeast32BitUnsigned;
+use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize};
 use scale_info::TypeInfo;
 use sp_runtime::DispatchResult;
 use sp_runtime::DispatchError;
 
-pub trait BitcoinConfig: 'static + Eq + Clone {
-    type AccountId: Parameter + Member;
-    type Balance: AtLeast32BitUnsigned + Parameter + Member + Default + Copy;
-    type NativeCurrency: Currency<Self::AccountId>;
+/// A trait for configuring Bitcoin-related types and constants.
+/// This trait is implemented by the runtime and can be used to
+/// configure the Bitcoin pallet.
+pub trait BitcoinConfig: Eq + Clone {
+    type NativeCurrency;
+    /// The type used to identify accounts.
+    type AccountId: Parameter + Member + Default;
+    /// The type used to represent balances.
+    type Balance: AtLeast32BitUnsigned + Parameter + Member + Default + Copy + MaybeSerializeDeserialize;
+    /// The type used to represent transactions.
+    type Transaction: Parameter + Member + Default;
 }
 
 pub const BITCOIN_MAINNET: u8 = 0;
@@ -47,6 +54,7 @@ pub const BITCOIN_REGTEST: u8 = 2;
 pub const BITCOIN_SIGNET: u8 = 3;
 pub const BITCOIN_SIMNET: u8 = 4;
 
+/// An enum representing different Bitcoin networks.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 pub enum BitcoinNetwork {
     Bitcoin,
@@ -56,26 +64,29 @@ pub enum BitcoinNetwork {
     BitcoinSimnet,
 }
 
-impl BitcoinNetwork {
-    pub fn to_string(&self) -> String {
-        match self {
-            BitcoinNetwork::Bitcoin => "Bitcoin".to_string(),
-            BitcoinNetwork::BitcoinTestnet => "Bitcoin Testnet".to_string(),
-            BitcoinNetwork::BitcoinRegtest => "Bitcoin Regtest".to_string(),
-            BitcoinNetwork::BitcoinSignet => "Bitcoin Signet".to_string(),
-            BitcoinNetwork::BitcoinSimnet => "Bitcoin Simnet".to_string(),
-        }
-    }
+
+/// Transaction trait for Bitcoin.
+pub trait BitcoinTransaction {
+    /// Create a new instance of the Bitcoin class. 
+    /// 
+    /// # Arguments
+    ///
+    /// * `currency_id` - The currency ID to use for the Bitcoin class.    
+    /// # Returns
+    /// A new instance of the Bitcoin class. 
+/// A struct for managing Bitcoin operations.
+/// This struct is used to manage Bitcoin operations.
+/// It provides functions for creating and managing Bitcoin transactions.
+/// It also provides functions for creating and managing Bitcoin transactions.
+}
+pub struct Bitcoin<T: BitcoinConfig>(PhantomData<T>);   
+
+/// A struct for managing Bitcoin configurations.
+pub struct Bitcoin<T: BitcoinConfig> {
+    _phantom: PhantomData<T>,
 }
 
-impl Default for BitcoinNetwork {
-    fn default() -> Self {
-        BitcoinNetwork::Bitcoin
-    }
-}
-
-pub struct Bitcoin<T: BitcoinConfig>(PhantomData<T>);
-
+/// A struct for managing Bitcoin configurations.
 impl<T: BitcoinConfig> Default for Bitcoin<T> {
     fn default() -> Self {
         Self(PhantomData)
@@ -174,7 +185,18 @@ impl<T: BitcoinConfig> Bitcoin<T> where T::NativeCurrency: Currency<T::AccountId
             },
             _ => <T::NativeCurrency as Currency<T::AccountId>>::Balance::default(),
         }
-    }       
+    }
+    
+    /// Function to select a Bitcoin network for operations based on a configuration flag.
+    pub fn select_network(network_id: u8) -> BitcoinNetwork {
+        BitcoinNetwork::from(network_id)
+    }
+
+    /// Retrieve the balance of a user in Bitcoin (mock example).
+    pub fn get_balance(user: &T::AccountId) -> T::Balance {
+        // Placeholder for balance retrieval; integrate actual balance calls here.
+        T::Balance::default()
+    }
 }
 
 /// A struct representing a positive imbalance.
@@ -203,20 +225,7 @@ impl<T: BitcoinConfig> NegativeImbalance<T> {
     }
 }
 
-/// Unit tests for the Bitcoin struct.
-#[cfg(test)]
-mod tests {
-    use frame_support::traits::SignedImbalance;
-    use super::*;
 
-    #[derive(Clone, Eq, PartialEq)]
-    pub struct TestConfig;
-
-    impl BitcoinConfig for TestConfig {
-        type AccountId = u64;
-        type Balance = u128;
-        type NativeCurrency = MockNativeCurrency;
-    }
 
     /// A mock implementation of the NativeCurrency trait.
     /// 
@@ -348,4 +357,74 @@ mod tests {
 
         assert_eq!(Bitcoin::<TestConfig>::slash(BitcoinNetwork::Bitcoin, &account_id, amount), amount);
     }
-}
+    #[test]
+    fn test_bitcoin_select_network() {
+        let bitcoin = Bitcoin::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let account_id = 1_u64;
+        let amount = 100_u128;
+
+        assert_eq!(Bitcoin::<TestConfig>::select_network(0), BitcoinNetwork::Bitcoin);
+        assert_eq!(Bitcoin::<TestConfig>::select_network(1), BitcoinNetwork::BitcoinTestnet);
+        assert_eq!(Bitcoin::<TestConfig>::select_network(2), BitcoinNetwork::BitcoinRegtest);
+        assert_eq!(Bitcoin::<TestConfig>::select_network(3), BitcoinNetwork::BitcoinSignet);
+        assert_eq!(Bitcoin::<TestConfig>::select_network(4), BitcoinNetwork::BitcoinSimnet);
+    }
+    #[test]
+    fn test_bitcoin_get_balance() {
+        let bitcoin = Bitcoin::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let account_id = 1_u64;
+        let amount = 100_u128;
+
+        assert_eq!(Bitcoin::<TestConfig>::get_balance(&account_id), 0);
+    }
+    #[test]
+    fn test_bitcoin_operations() {
+        let bitcoin = Bitcoin::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let account_id = 1_u64;
+        let amount = 100_u128;
+
+        assert!(Bitcoin::<TestConfig>::deposit(BitcoinNetwork::Bitcoin, &account_id, amount).is_ok());
+        assert!(Bitcoin::<TestConfig>::withdraw(BitcoinNetwork::Bitcoin, &account_id, amount).is_ok());
+        assert!(Bitcoin::<TestConfig>::deposit(BitcoinNetwork::BitcoinTestnet, &account_id, amount).is_err());
+    }
+    #[test]
+    fn test_bitcoin_network() {
+        assert_eq!(BitcoinNetwork::default(), BitcoinNetwork::Bitcoin);
+        let network = BitcoinNetwork::BitcoinTestnet;
+        assert_ne!(network, BitcoinNetwork::Bitcoin);
+    }   
+    #[test]
+    fn test_bitcoin_config() {
+        let config = BitcoinConfig::default();
+        assert_eq!(config.native_currency(), ());
+        assert_eq!(config.account_id(), ());
+        assert_eq!(config.balance(), ());
+        assert_eq!(config.transaction(), ());
+    }   
+    #[test]
+    fn test_bitcoin_transaction() {
+        let transaction = BitcoinTransaction::default();
+        assert_eq!(transaction.create_slice((), ProofMetadata::default()), ());
+        assert_eq!(transaction.calculate_hash(&[]), ());
+    }   
+    #[test]
+    fn test_bitcoin_manager() {
+        let manager = BitcoinManager::<TestConfig>::new();
+        assert_eq!(manager.deposit_bitcoin(BitcoinNetwork::Bitcoin, &1_u64, 100_u128), Ok(()));
+        assert_eq!(manager.withdraw_bitcoin(BitcoinNetwork::Bitcoin, &1_u64, 100_u128), Ok(()));
+        assert_eq!(manager.slash_bitcoin(BitcoinNetwork::Bitcoin, &1_u64, 100_u128), 100_u128);
+        assert_eq!(manager.can_slash_bitcoin(BitcoinNetwork::Bitcoin, &1_u64, 100_u128), true);
+        assert_eq!(manager.select_network(0), BitcoinNetwork::Bitcoin);
+        assert_eq!(manager.get_balance(&1_u64), 0);
+    }
+    #[test]
+    fn test_bitcoin() {
+        let bitcoin = Bitcoin::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let account_id = 1_u64;
+        let amount = 100_u128;
+
+        assert!(Bitcoin::<TestConfig>::deposit(BitcoinNetwork::Bitcoin, &account_id, amount).is_ok());
+        assert!(Bitcoin::<TestConfig>::withdraw(BitcoinNetwork::Bitcoin, &account_id, amount).is_ok());
+        assert!(Bitcoin::<TestConfig>::deposit(BitcoinNetwork::BitcoinTestnet, &account_id, amount).is_err());
+    }
+    
