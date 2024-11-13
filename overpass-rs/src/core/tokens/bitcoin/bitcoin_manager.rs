@@ -13,7 +13,7 @@ use sp_runtime::DispatchResult;
 use super::{
     bitcoin_integration::{Bitcoin, BitcoinConfig},
     bitcoin_transaction::BitcoinTransaction,
-    bitcoin_types::{BitcoinError, BitcoinNetwork},
+    bitcoin_types::{BitcoinError, BitcoinNetwork}, BitcoinZkpManager,
 };  
 
 
@@ -24,8 +24,7 @@ pub struct BitcoinManager<T: BitcoinConfig> {
     phantom: PhantomData<T>,
 }
 
-impl<T: BitcoinConfig, ZkProofSlice, ZkProofSlice, ZkProofSlice> BitcoinManager<T>
-where
+impl<T: BitcoinConfig> BitcoinManager<T>where
     T::NativeCurrency: Currency<T::AccountId>,
 {
     /// Create a new Bitcoin manager instance with ZKP support
@@ -33,8 +32,7 @@ where
         Self {
             bitcoin: Bitcoin::new(),
             zkp_manager: BitcoinZkpManager::new(network),
-            phantom: PhantomData::<ZkProofSlice>,
-            
+            phantom: PhantomData,
         }
     }
 
@@ -44,15 +42,15 @@ where
         network: BitcoinNetwork,  
         who: &T::AccountId,  
         amount: T::Balance,  
-    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> { 
+    ) -> Result<(DispatchResult, Vec<u8>), BitcoinError> where <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance> where <<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance: From<<T as bitcoin_integration::BitcoinConfig>::Balance> where <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance> where <<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance: From<<T as BitcoinConfig>::Balance> { 
         // Create proof metadata  
         let metadata = ProofMetadata {
             version: 1,  
             proof_type: ProofType::Deposit,  
             height_bounds: Default::default(),  
-            channel_id: todo!(),
-            created_at: todo!(),
-            verified_at: todo!(),
+            channel_id: network.to_channel_id(),
+            created_at: chrono::Utc::now().timestamp() as u64,
+            verified_at: Some(0),
         };
         // Generate proof and perform deposit
         let (deposit_result, proof) = self.zkp_manager
@@ -68,15 +66,15 @@ where
         network: BitcoinNetwork,
         who: &T::AccountId,
         amount: T::Balance,
-    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> where <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance> where <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance> {
         // Create proof metadata
         let metadata = ProofMetadata {
             version: 1,
             proof_type: ProofType::Withdrawal,
-            height_bounds: (0, u32::MAX),
+            height_bounds: (0, u32::MAX.into()),
             channel_id: network.to_channel_id(),
             created_at: chrono::Utc::now().timestamp() as u64,
-            verified_at: 0,
+            verified_at: Some(0),
         };
 
         // Generate proof and perform withdrawal
@@ -156,9 +154,7 @@ where
 
     
 }
-use use crate::core::zkps::proof::ProofMetadata;
-use crate::core::zkps::proof::ProofMetadata;
-crate::core::hierarchy::intermediate::state_tracking_i::ProofType;
+
 
 #[cfg(test)]
 mod tests {
