@@ -1,22 +1,15 @@
-// ./src/core/tokens/bitcoin/bitcoin_zkp_manager.rs
-use codec::{Decode, Encode};
+use crate::core::tokens::bitcoin::bitcoin_integration;
 use core::marker::PhantomData;
-use frame_support::{
-    traits::{Currency, ExistenceRequirement, WithdrawReasons},
-    Parameter,
-};
-use sp_runtime::{DispatchError, DispatchResult};
-
+use frame_support::
+    traits::{Currency, WithdrawReasons}
+;
+use sp_runtime::DispatchResult;
+use crate::core::tokens::bitcoin::bitcoin_proof::{BitcoinProofBoc, BitcoinZkProof};
 use crate::core::tokens::bitcoin::bitcoin_types::{BitcoinError, BitcoinNetwork};
 use crate::core::tokens::bitcoin::bitcoin_integration::{Bitcoin, BitcoinConfig};
-use crate::core::zkps::proof::{ProofMetadata, ProofType, ZkProof};
-use crate::core::zkps::bitcoin_proof::ZkProofBoc;
-use crate::core::zkps::plonky2::ZkProofSlice;
-use crate::core::zkps::plonky2::{
-    Plonky2System,
-    Plonky2SystemHandle,
-    ZkCircuitBuilder,
-};
+use crate::core::zkps::proof::{ProofMetadata, ProofType};
+
+use crate::core::zkps::plonky2::Plonky2SystemHandle;
 
 /// Manager for Bitcoin operations with zero-knowledge proof integration
 pub struct BitcoinZkpManager<T: BitcoinConfig> {
@@ -26,8 +19,7 @@ pub struct BitcoinZkpManager<T: BitcoinConfig> {
     phantom: PhantomData<T>,
 }
 
-impl<T: BitcoinConfig> BitcoinZkpManager<T>
-where
+impl<T: BitcoinConfig> BitcoinZkpManager<T>where
     T::NativeCurrency: Currency<T::AccountId>,
 {
     /// Create a new BitcoinZkpManager instance
@@ -42,12 +34,18 @@ where
     }
 
     /// Generate a proof for a deposit operation
-    pub async fn deposit_with_proof(
+    pub fn deposit_with_proof(
         &self,
         who: &T::AccountId,
         amount: T::Balance,
         metadata: ProofMetadata,
-    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> 
+    where 
+        <<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance: From<<T as bitcoin_integration::BitcoinConfig>::Balance>,
+        <<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance: From<<T as BitcoinConfig>::Balance>,
+        <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance>,
+        <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance>
+    {
         // Get current balance for proof generation
         let old_balance = self.bitcoin.get_balance(self.network, who);
         let new_balance = old_balance + amount;
@@ -85,15 +83,22 @@ where
         let deposit_result = self.bitcoin.deposit(self.network, who, amount);
 
         Ok((deposit_result, proof_slice))
-    }    /// Generate a proof for a withdrawal operation
+    }
+    /// Generate a proof for a withdrawal operation
     pub async fn withdraw_with_proof(
         &self,
         who: &T::AccountId,
         amount: T::Balance,
         metadata: ProofMetadata,
-    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> 
+    where 
+        <<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance: From<<T as BitcoinConfig>::Balance>,
+        <<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance: From<<T as bitcoin_integration::BitcoinConfig>::Balance>,
+        <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance>,
+        <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance>
+    {
         // Get current balance for proof generation
-        let old_balance = self.bitcoin.get_balance(self.network, who);
+        let old_balance = self.bitcoinchecked_mule(self.network, who);
         let new_balance = old_balance.checked_sub(&amount)
             .ok_or_else(|| BitcoinError::InsufficientBalance("Insufficient balance for withdrawal".into()))?;
 
@@ -140,12 +145,17 @@ where
         to: &T::AccountId,
         amount: T::Balance,
         metadata: ProofMetadata,
-    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> 
+    where 
+        <<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance: From<<T as bitcoin_integration::BitcoinConfig>::Balance>,
+        <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance>,
+        <<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance: From<<T as BitcoinConfig>::Balance>
+    {
         // Get balances for proof generation
         let sender_balance = self.bitcoin.get_balance(self.network, from);
         let recipient_balance = self.bitcoin.get_balance(self.network, to);
 
-        // Verify sufficient balance
+        // Verify sufficient balancechecked_mul
         let new_sender_balance = sender_balance.checked_sub(&amount)
             .ok_or_else(|| BitcoinError::InsufficientBalance("Insufficient balance for transfer".into()))?;
 
@@ -247,9 +257,12 @@ mod tests {
             version: 1,
             proof_type: ProofType::Deposit,
             height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
-        let result = manager.deposit_with_proof(&account, amount, metadata).await;
+        let result = manager.deposit_with_proof(&account, amount, metadata);
         assert!(result.is_ok());
 
         let (dispatch_result, proof) = result.unwrap();
@@ -268,6 +281,9 @@ mod tests {
             version: 1,
             proof_type: ProofType::Transfer,
             height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
         let result = manager.transfer_with_proof(&from, &to, amount, metadata).await;
@@ -277,7 +293,6 @@ mod tests {
         assert!(dispatch_result.is_ok());
         assert_eq!(proof.metadata.proof_type, ProofType::Transfer);
     }
-
     #[test]
     fn test_proof_verification() {
         let manager = BitcoinZkpManager::<TestConfig>::new(BitcoinNetwork::Bitcoin);
@@ -286,6 +301,9 @@ mod tests {
             version: 1,
             proof_type: ProofType::Transfer,
             height_bounds: Default::default(),
+            channel_id: todo!(),
+            created_at: todo!(),
+            verified_at: todo!(),
         };
 
         let proof_slice = ZkProofSlice {
