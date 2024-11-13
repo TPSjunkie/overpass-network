@@ -1,12 +1,11 @@
 import type { WalletInfo } from '@tonconnect/sdk';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Cell, Address } from "@ton/ton";
 import AudioPlayer from './components/AudioPlayer';
 import { useAudio } from './hooks/useAudio';
 import { TonConnectUI } from '@tonconnect/ui-react';
 import { getHttpEndpoint } from '@orbs-network/ton-access';
-import { TonClient } from '@ton/ton';
-
+import { Address, TonClient } from '@ton/ton';
+import { Cell } from '@ton/core';
 
 type MenuScreen = 'main' | 'send' | 'receive' | 'tokens' | 'wallets' | 'channels' | 'channelSettings' | 'transactions' | 'settings' | 'market';
 
@@ -267,12 +266,12 @@ const App = () => {
       }
 
       if (wallet && 'jsBridgeKey' in wallet) {
-        await connector.connectWallet();
+        connector.connectWallet();
         return;
       }
 
       if (wallet && 'universalLink' in wallet) {
-        await connector.connectWallet();
+        connector.connectWallet();
         if ('universalLink' in wallet) {
             window.location.href = wallet
         }
@@ -306,7 +305,7 @@ const App = () => {
       setConnector(newConnector);
 
       try {
-        const wallet = await newConnector
+        const wallet = newConnector
         if (wallet) {
           setConnected(true);
           const address = wallet.account.address;
