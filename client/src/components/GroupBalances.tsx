@@ -1,7 +1,7 @@
 // src/components/GroupBalances.tsx
 
 import React from "react";
-import { useGroupBalances } from "../hooks/useGroupBalances";
+import { useGroupBalances, type GroupBalance } from "../hooks/useGroupBalances";
 import { useGroupChannels } from "../hooks/useGroupChannels";
 
 interface GroupBalancesProps {
@@ -24,9 +24,9 @@ const GroupBalancesComponent: React.FC<GroupBalancesProps> = ({ groupId }) => {
     <div>
       <h2>Group Balances</h2>
       <ul>
-        {balances.map((balance: number, index: number) => (
+        {balances.map((balance: GroupBalance, index: number) => (
           <li key={index}>
-            {channels[index]?.name || `Channel ${index + 1}`}: {balance} TON
+            {channels[index]?.name || `Channel ${index + 1}`}: {balance.amount} TON
           </li>
         ))}
       </ul>
