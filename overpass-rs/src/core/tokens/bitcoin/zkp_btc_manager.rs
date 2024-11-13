@@ -123,18 +123,36 @@ impl ZkProofManager {
         amount: impl Encode,
         metadata: ProofMetadata,
     ) -> Result<ZkProofSlice, String> {
+        // Validate metadata
+        if metadata.height_bounds.min_height >= metadata.height_bounds.max_height {
+            return Err("Invalid height bounds: min_height must be less than max_height".to_string());
+        }
+
+        // Create and validate proof data
+        let proof_data = amount.encode();
+        if proof_data.is_empty() {
+            return Err("Amount encoding resulted in empty proof data".to_string());
+        }
+
+        // Create ZkProofBoc with actual data
         let boc = ZkProofBoc {
-            proof_data: amount.encode(),
-            vk_hash: [0u8; 32], // Placeholder for actual proof hash
-            public_inputs: vec![],
-            auxiliary_data: vec![],
+            proof_data,
+            vk_hash: self.calculate_hash(&proof_data), // Generate actual verification key hash
+            public_inputs: vec![metadata.version as u8, metadata.proof_type as u8],
+            auxiliary_data: vec![
+                metadata.height_bounds.min_height.to_le_bytes().to_vec(),
+                metadata.height_bounds.max_height.to_le_bytes().to_vec(),
+            ].concat(),
         };
+
+        // Serialize and hash the complete proof
         let boc_data = self.serialize(&boc);
         let boc_hash = self.calculate_hash(&boc_data);
+
+        // Create and return the proof slice
         Ok(ZkProofSlice { boc_hash, metadata })
     }
 }
-
 #[wasm_bindgen]
 impl ZkProofSlice {
     /// Encode ZkProofSlice into OP_RETURN format.
