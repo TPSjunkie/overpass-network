@@ -3,15 +3,14 @@ import { useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useTonConnect } from '@/hooks/useTonConnect';
 import { useGroupChannels } from '../hooks/useGroupChannels';
-import { BalanceCache } from '../utils/balanceCache';
 import { WasmTransactionSender, TransactionType, type ChannelTransactionParams } from '@/utils/wasmTransactionSender';
 
 import { createCell } from '../utils/ton';
+import { BalanceCache } from '@/utils/BalanceCache';
+import type { Cell } from '@ton/core';
+import setBalance from '@/services/setBalance';
+import { error } from 'console';
 
-interface ExtendedWalletInfo {
-  address: string;
-  wallet: any;
-}
 
 interface Channel {
   id: number;
@@ -23,7 +22,7 @@ interface ChannelControlsProps {
   children?: ReactNode;
 }
 
-const ChannelControls: React.FC<ChannelControlsProps> = ({ children }) => {
+const ChannelControls: React.FC<ChannelControlsProps> = () => {
   const { walletInfo, channelAddress } = useTonConnect();
   const { data: channels, isLoading, error } = useGroupChannels(1);
   const balanceCache = BalanceCache.getInstance();
@@ -33,7 +32,7 @@ const ChannelControls: React.FC<ChannelControlsProps> = ({ children }) => {
 
   const createChannelTransaction = async (params: ChannelTransactionParams): Promise<void> => {
     const sender = WasmTransactionSender.getInstance();
-    await sender.sendChannelTransaction(
+    sender.sendChannelTransaction(
       params.recipient,
       params.amount,
       params.payload,
@@ -76,39 +75,43 @@ const ChannelControls: React.FC<ChannelControlsProps> = ({ children }) => {
 
       const transactionParams: ChannelTransactionParams = {
         recipient: recipientAddress,
-        amount: amount.toString(), // Convert bigint to string
-        payload: messageCell.toBoc().toString('base64'), // Convert Cell to base64 string
+        amount: amount.toString(),
+        payload: (messageCell as Cell).toBoc().toString('base64'),
         stateInit: undefined,
         channelId: channelId.toString(),
         groupId: '1',
         transactionType: operationType === 'send' ? TransactionType.CHANNEL_INIT : TransactionType.CHANNEL_WITHDRAW,
-        flags: '0', // Changed to string
-        bounce: false // Changed to boolean
+        flags: '0',
+        bounce: false
       };
   
-    const currentBalance = BigInt(balanceCache.getBalance(channelId.toString()));
+      const currentBalance = BigInt(balanceCache.getBalance(channelId.toString()));
   
-    // Update local balance immediately for better UX
-        const newBalance =
-          operationType === "send"
-            ? currentBalance - amount
-            : currentBalance + amount;
-  
-      balanceCache.setBalance(channelId.toString(), newBalance.toString());      
+      // Update local balance immediately for better UX
+      const newBalance =
+        operationType === "send"
+          ? currentBalance - amount
+          : currentBalance + amount;
+            
+      balanceCache.setBalance(channelId.toString(), Number(newBalance));
+      // Update the balance in the UI immediately for better UX
+      setBalance(Number(newBalance));
+
       await createChannelTransaction(transactionParams);
-    
       setSelectedIndex(null);
       setOperationError(null);
-
     } catch (err) {
-      console.error('Channel operation failed:', err);
-      setOperationError(err instanceof Error ? err.message : 'Operation failed');
+      console.error("Channel operation failed:", err);
+      setOperationError(
+        err instanceof Error ? err.message : "Operation failed"
+      );
       balanceCache.getBalance(channelId.toString());
     } finally {
       setIsProcessing(false);
     }
-
-  }, [walletInfo, channelAddress, channels, balanceCache, createChannelTransaction, setSelectedIndex, setOperationError, setIsProcessing]);
+  },
+  [walletInfo, channelAddress, channels, balanceCache, createChannelTransaction, setSelectedIndex, setOperationError, setIsProcessing]
+);
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     if (selectedIndex === null || isProcessing) return;
@@ -128,13 +131,6 @@ const ChannelControls: React.FC<ChannelControlsProps> = ({ children }) => {
     }
   }, [selectedIndex, channels, isProcessing, handleChannelOperation]);
 
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [handleKeyPress]);
-
-  return <>{children}</>;
-}
   useEffect(() => {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
@@ -178,7 +174,7 @@ const ChannelControls: React.FC<ChannelControlsProps> = ({ children }) => {
               <span>CH-{channel.id.toString()}</span>
             </div>
             <span>
-              {(balanceCache.getBalances(channel.id.toString()) || '0')} TON
+              {(balanceCache.getBalance(channel.id.toString()) || '0')} TON
             </span>
           </div>
         ))}
