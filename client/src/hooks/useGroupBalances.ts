@@ -4,6 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { OpClient } from "../utils/op_client";export interface GroupBalance {
+  amount: ReactNode;
   groupId: string;
   balance: number;
 }
