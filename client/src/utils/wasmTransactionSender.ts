@@ -2,6 +2,7 @@
 
 import type { Transaction, WalletExtension } from "@/types/wasm-types/index";
 import { getHttpEndpoint } from "@orbs-network/ton-access";
+import type { Contract } from "@ton/core";
 
 import { Cell } from "recharts";
 
@@ -88,6 +89,9 @@ export class WasmError extends Error {
 }
 
 export class WasmTransactionSender {
+  sendChannelTransaction(recipient: string, amount: string, payload: string | undefined, channelId: string, groupId: string, transactionType: TransactionType, stateInit: string | undefined, address: string | undefined, params: ChannelTransactionParams, arg9: Contract) {
+    throw new Error('Method not implemented.');
+  }
     beginCell: any;
     static sendTransaction(transaction: Transaction, params: ChannelTransactionParams) {
         throw new Error("Method not implemented.");
