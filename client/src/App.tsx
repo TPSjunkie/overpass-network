@@ -3,6 +3,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Cell, Address } from "@ton/core";
 import AudioPlayer from './components/AudioPlayer';
 import { useAudio } from './hooks/useAudio';
+import { TonConnectUI } from '@tonconnect/ui-react';
+import { getHttpEndpoint } from '@orbs-network/ton-access';
+import { TonClient } from '@ton/ton';
 
 
 type MenuScreen = 'main' | 'send' | 'receive' | 'tokens' | 'wallets' | 'channels' | 'channelSettings' | 'transactions' | 'settings' | 'market';
@@ -14,6 +17,10 @@ type Token = {
 };
 
 type Transaction = {
+  inMessage: any;
+  outMessages: any;
+  hash: any;
+  now: number;
   id: string;
   type: 'in' | 'out';
   amount: string;
@@ -111,7 +118,7 @@ const App = () => {
       const endpoint = await getHttpEndpoint({
         network: currentNetwork === 'ton-mainnet' ? 'mainnet' : 'testnet',
       });
-      const client = new Ton.TonClient({ endpoint });
+      const client = new TonClient({ endpoint });
       const addressObj = Address.parse(address);
       const transactions = await client.getTransactions(addressObj, { limit: 50 });
 
@@ -187,13 +194,13 @@ const App = () => {
       });
       const client = new TonClient({ endpoint });
       const txs = await client.getTransactions(Address.parse(address), { limit: 20 });
-      
-      const formattedTxs: Transaction[] = txs.map((tx: { inMessage: { info: { dest: { toString: () => string; }; value: { toString: () => any; }; src: { toString: () => any; }; }; }; outMessages: { info: { dest: { toString: () => any; }; }; }[]; hash: { toString: () => any; }; now: number; }) => {
+
+      const formattedTxs = txs.map((tx) => {
         const isIncoming = tx.inMessage?.info?.dest?.toString() === address;
         const amount = isIncoming 
           ? tx.inMessage?.info?.value?.toString() || '0'
           : tx.outMessages?.[0]?.info?.value?.toString() || '0';
-        
+  
         return {
           id: tx.hash.toString(),
           type: isIncoming ? 'in' : 'out',
@@ -201,11 +208,15 @@ const App = () => {
           address: isIncoming 
             ? tx.inMessage?.info?.src?.toString() || 'Unknown'
             : tx.outMessages?.[0]?.info?.dest?.toString() || 'Unknown',
-          timestamp: tx.now * 1000
+          timestamp: tx.now * 1000,
+          inMessage: tx.inMessage,
+          outMessages: tx.outMessages,
+          hash: tx.hash,
+          now: tx.now
         };
       });
-      
-      setTransactions(formattedTxs);
+
+      setTransactions(formattedTxs as Transaction[]);
     } catch (error) {
       console.error('Error fetching transactions:', error);
       setError('Failed to load transactions');
@@ -220,7 +231,7 @@ const App = () => {
       const endpoint = await getHttpEndpoint({
         network: currentNetwork === 'ton-mainnet' ? 'mainnet' : 'testnet'
       });
-      const client = new Ton.TonClient({ endpoint });
+      const client = new TonClient({ endpoint });
       const balanceValue = await client.getBalance(Address.parse(address));
       setBalance((Number(balanceValue) / 1e9).toFixed(2));
     } catch (error) {
@@ -228,7 +239,6 @@ const App = () => {
       setBalance('0');
     }
   }, [currentNetwork]);
-
   // Network handling
   const handleNetworkChange = useCallback(async (network: string) => {
     setCurrentNetwork(network);

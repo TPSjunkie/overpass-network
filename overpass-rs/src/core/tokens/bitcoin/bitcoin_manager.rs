@@ -1,70 +1,219 @@
-// ./src/core/tokens/bitcoin_manager.rs
-// This file is part of the Overpass Network, handling Bitcoin operations with over-there-pallets integration.
+// ./src/core/tokens/bitcoin/bitcoin_manager.rs
+use codec::{Decode, Encode};
+use core::marker::PhantomData;
+use frame_support::{
+    traits::{Currency, ExistenceRequirement, WithdrawReasons},
+    Parameter,
+};
+use sp_runtime::{DispatchError, DispatchResult};
 
-use over_there_pallets::bitcoin::{Bitcoin, BitcoinNetwork};
-use codec::{Encode, Decode};
-use frame_support::{traits::{Currency, ExistenceRequirement}, dispatch::DispatchResult};
-use sp_runtime::DispatchError;
+use super::{
+    bitcoin_integration::{Bitcoin, BitcoinConfig},
+    bitcoin_transaction::BitcoinTransaction,
+    bitcoin_types::{BitcoinAccountData, BitcoinError, BitcoinNetwork, BitcoinTransactionData},
+    bitcoin_zkp_manager::BitcoinZkpManager,  // Import the ZKP manager
+};
 
-/// Struct for managing Bitcoin operations integrated with `over-there-pallets`.
+use crate::core::tokens::zkp::{ProofMetadata, ProofType, ZkProofSlice};
+
+/// Enhanced manager struct combining Bitcoin operations with ZK proofs
 pub struct BitcoinManager<T: BitcoinConfig> {
+    bitcoin: Bitcoin<T>,
+    zkp_manager: BitcoinZkpManager<T>,  // Add ZKP manager
     phantom: PhantomData<T>,
 }
 
-impl<T: BitcoinConfig> BitcoinManager<T> {
-    /// Create a new Bitcoin manager instance.
-    pub fn new() -> Self {
-        BitcoinManager { phantom: PhantomData }
+impl<T: BitcoinConfig> BitcoinManager<T>
+where
+    T::NativeCurrency: Currency<T::AccountId>,
+{
+    /// Create a new Bitcoin manager instance with ZKP support
+    pub fn new(network: BitcoinNetwork) -> Self {
+        Self {
+            bitcoin: Bitcoin::new(),
+            zkp_manager: BitcoinZkpManager::new(network),
+            phantom: PhantomData,
+        }
     }
 
-    /// Deposit function to create a Bitcoin balance for a user.
-    pub fn deposit_bitcoin(
+    /// Process a deposit with zero-knowledge proof
+    pub async fn process_deposit_with_proof(
         &self,
         network: BitcoinNetwork,
-        user: &T::AccountId,
+        who: &T::AccountId,
         amount: T::Balance,
-    ) -> DispatchResult {
-        Bitcoin::<T>::deposit(network, user, amount)
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+        // Create proof metadata
+        let metadata = ProofMetadata {
+            version: 1,
+            proof_type: ProofType::Deposit,
+            height_bounds: Default::default(),
+        };
+
+        // Generate proof and perform deposit
+        let (deposit_result, proof) = self.zkp_manager
+            .deposit_with_proof(who, amount, metadata)
+            .await
+            .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Proof generation failed: {:?}", e)))?;
+
+        Ok((deposit_result, proof))
     }
 
-    /// Withdraw function to reduce Bitcoin balance for a user.
-    pub fn withdraw_bitcoin(
+    /// Process a withdrawal with zero-knowledge proof
+    pub async fn process_withdrawal_with_proof(
         &self,
         network: BitcoinNetwork,
-        user: &T::AccountId,
+        who: &T::AccountId,
         amount: T::Balance,
-    ) -> Result<(), DispatchError> {
-        Bitcoin::<T>::withdraw(network, user, amount)
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+        // Create proof metadata
+        let metadata = ProofMetadata {
+            version: 1,
+            proof_type: ProofType::Withdrawal,
+            height_bounds: Default::default(),
+        };
+
+        // Generate proof and perform withdrawal
+        let (withdrawal_result, proof) = self.zkp_manager
+            .withdraw_with_proof(who, amount, metadata)
+            .await
+            .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Proof generation failed: {:?}", e)))?;
+
+        Ok((withdrawal_result, proof))
     }
 
-    /// Slash a specified amount from a user's Bitcoin balance (e.g., for penalties).
-    pub fn slash_bitcoin(
+    /// Process a transfer with zero-knowledge proof
+    pub async fn process_transfer_with_proof(
         &self,
         network: BitcoinNetwork,
-        user: &T::AccountId,
+        from: &T::AccountId,
+        to: &T::AccountId,
         amount: T::Balance,
-    ) -> T::Balance {
-        Bitcoin::<T>::slash(network, user, amount)
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
+        // Create proof metadata
+        let metadata = ProofMetadata {
+            version: 1,
+            proof_type: ProofType::Transfer,
+            height_bounds: Default::default(),
+        };
+
+        // Generate proof and perform transfer
+        let (transfer_result, proof) = self.zkp_manager
+            .transfer_with_proof(from, to, amount, metadata)
+            .await
+            .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Proof generation failed: {:?}", e)))?;
+
+        Ok((transfer_result, proof))
     }
 
-    /// Function to check if an account has sufficient balance to perform an operation.
-    pub fn can_slash_bitcoin(
+    /// Verify a transaction proof
+    pub fn verify_transaction_proof(
         &self,
-        network: BitcoinNetwork,
-        user: &T::AccountId,
-        amount: T::Balance,
-    ) -> bool {
-        Bitcoin::<T>::can_slash(network, user, amount)
+        tx: &BitcoinTransaction<T::Balance>,
+        proof_slice: &ZkProofSlice,
+        expected_metadata: &ProofMetadata,
+    ) -> Result<bool, BitcoinError> {
+        // Get account data for verification
+        let sender_account = self.initialize_account(
+            tx.tx_data.network,
+            &T::AccountId::decode(&mut &tx.tx_data.sender[..])
+                .map_err(|_| BitcoinError::InvalidTransaction("Invalid sender".into()))?
+        )?;
+
+        // Verify transaction validity
+        if tx.verify_transaction(&sender_account, expected_metadata) != VerificationResult::Valid {
+            return Err(BitcoinError::InvalidTransaction("Invalid transaction".into()));
+        }
+
+        // Verify the proof
+        self.zkp_manager.verify_proof(proof_slice, expected_metadata)
+            .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Proof verification failed: {:?}", e)))
     }
 
-    /// Function to select a Bitcoin network for operations based on a configuration flag.
-    pub fn select_network(network_id: u8) -> BitcoinNetwork {
-        BitcoinNetwork::from(network_id)
+    // ... rest of the BitcoinManager implementation ...
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::tokens::bitcoin::bitcoin_integration::tests::{TestConfig, TestCurrency};
+
+    #[tokio::test]
+    async fn test_deposit_with_proof() {
+        let manager = BitcoinManager::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let account = 1_u64;
+        let amount = 100_u128;
+
+        let result = manager.process_deposit_with_proof(
+            BitcoinNetwork::Bitcoin,
+            &account,
+            amount
+        ).await;
+        
+        assert!(result.is_ok());
+        let (dispatch_result, proof) = result.unwrap();
+        assert!(dispatch_result.is_ok());
+        assert!(proof.metadata.proof_type == ProofType::Deposit);
     }
 
-    /// Retrieve the balance of a user in Bitcoin (mock example).
-    pub fn get_balance(user: &T::AccountId) -> T::Balance {
-        // Placeholder for balance retrieval; integrate actual balance calls here.
-        T::Balance::default()
+    #[tokio::test]
+    async fn test_transfer_with_proof() {
+        let manager = BitcoinManager::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let from = 1_u64;
+        let to = 2_u64;
+        let amount = 100_u128;
+
+        // First deposit
+        let deposit_result = manager.process_deposit_with_proof(
+            BitcoinNetwork::Bitcoin,
+            &from,
+            amount
+        ).await;
+        assert!(deposit_result.is_ok());
+
+        // Then transfer
+        let result = manager.process_transfer_with_proof(
+            BitcoinNetwork::Bitcoin,
+            &from,
+            &to,
+            amount
+        ).await;
+        
+        assert!(result.is_ok());
+        let (dispatch_result, proof) = result.unwrap();
+        assert!(dispatch_result.is_ok());
+        assert!(proof.metadata.proof_type == ProofType::Transfer);
+    }
+
+    #[test]
+    fn test_proof_verification() {
+        let manager = BitcoinManager::<TestConfig>::new(BitcoinNetwork::Bitcoin);
+        let account = 1_u64;
+        let amount = 100_u128;
+
+        // Create a transaction
+        let tx = manager.create_transaction(
+            BitcoinNetwork::Bitcoin,
+            &account,
+            &account,
+            amount
+        ).unwrap();
+
+        // Create proof metadata
+        let metadata = ProofMetadata {
+            version: 1,
+            proof_type: ProofType::Transfer,
+            height_bounds: Default::default(),
+        };
+
+        // Create a proof slice (in real implementation this would come from proof generation)
+        let proof_slice = ZkProofSlice {
+            boc_hash: [0u8; 32],
+            metadata: metadata.clone(),
+        };
+
+        // Verify the proof
+        let result = manager.verify_transaction_proof(&tx, &proof_slice, &metadata);
+        assert!(result.is_ok());
     }
 }
