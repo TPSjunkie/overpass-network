@@ -14,7 +14,7 @@ use super::{
     bitcoin_zkp_manager::BitcoinZkpManager,  // Import the ZKP manager
 };
 
-use crate::core::tokens::zkp::{ProofMetadata, ProofType, ZkProofSlice};
+use crate::core::zkps::proof::{ProofMetadata, ProofType, ZkProofSlice};
 
 /// Enhanced manager struct combining Bitcoin operations with ZK proofs
 pub struct BitcoinManager<T: BitcoinConfig> {
