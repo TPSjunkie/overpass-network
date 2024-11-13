@@ -90,6 +90,7 @@ declare module '@ton/core' {
     }
 
     export class Cell {
+      [x: string]: any;
 		static fromBase64(boc: any) {
 			throw new Error('Method not implemented.');
 		}
