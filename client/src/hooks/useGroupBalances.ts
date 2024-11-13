@@ -3,7 +3,8 @@
 /// This file contains the logic for fetching group balances from the OP Client.
 
 import { useQuery } from "@tanstack/react-query";
-import { OpClient } from "../utils/op_client";export interface GroupBalance {
+import { OpClient } from "../utils/op_client";import type { ReactNode } from "react";
+export interface GroupBalance {
   amount: ReactNode;
   groupId: string;
   balance: number;
