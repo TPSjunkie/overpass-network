@@ -1,12 +1,10 @@
 // src/main.tsx
 import { createRoot } from "react-dom/client";
+import React from "react";
 
-import App from "./App";
+import { App } from "./App";
 import "./index.css";
 
-const tonClient = new TonClient({
-  endpoint: "https://toncenter.com/api/v2/jsonRPC"
-});
 const initWasm = async () => {
   const wasmModule = await import('@/wasm/overpass_rs');
   await wasmModule.default.init();
@@ -19,10 +17,11 @@ const init = async () => {
     if (!rootElement) throw new Error("Root element not found");
     
     const root = createRoot(rootElement);
-    root.render(<App />);
+    root.render(<React.StrictMode><App /></React.StrictMode>)
   } catch (error) {
     console.error('Failed to initialize app:', error);
     document.body.innerHTML = '<div class="error-message">Failed to load application. Please check console for details.</div>';
   }
 };
+
 init();

@@ -49,7 +49,7 @@ const NETWORKS: NetworkOption[] = [
 ];
 
 const backendApi = new BackendApi(process.env.REACT_APP_API_URL || '');
-const App = () => {
+export const App = () => {
   // State declarations
   const { isAudioOn, volume, toggleAudio } = useAudio();
   const [connector, setConnector] = useState<TonConnectUI | null>(null);
@@ -288,4 +288,6 @@ const App = () => {
     throw new Error('Function not implemented.');
   }
 }
+
+export default App;
   
