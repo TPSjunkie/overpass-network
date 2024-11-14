@@ -39,6 +39,15 @@ declare module '@tonconnect/ui' {
         sendTransaction(transaction: any): Promise<void>;
     }
     export class TonConnectUI {
+        getBalance() {
+          throw new Error('Method not implemented.');
+        }
+        getTokens() {
+          throw new Error('Method not implemented.');
+        }
+        getTransactions() {
+          throw new Error('Method not implemented.');
+        }
         account: any;
         connectWallet() {
           throw new Error('Method not implemented.');
