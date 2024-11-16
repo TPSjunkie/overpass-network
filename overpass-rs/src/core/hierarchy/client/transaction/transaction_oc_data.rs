@@ -56,3 +56,17 @@ impl TransactionOCData {
     pub fn get_wallet_extension(&self) -> Arc<RwLock<WalletExtension>> {
         self.wallet_extension.clone()
     } 
+
+    pub fn get_transaction_id(&self) -> [u8; 32] {
+        self.transaction_id
+    }
+
+    pub fn get_transaction_type(&self) -> TransactionType {
+        self.transaction_type
+    }
+
+    pub fn get_wallet_extension(&self) -> Arc<RwLock<WalletExtension>> {
+        self.wallet_extension.clone()
+    }   
+    
+} 
