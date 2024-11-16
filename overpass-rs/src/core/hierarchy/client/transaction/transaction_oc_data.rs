@@ -1,17 +1,9 @@
 // ./src/core/hierarchy/client/transaction/transaction_oc_data.rs
 
 use crate::core::hierarchy::client::transaction::transaction_types::TransactionType;
-use crate::core::hierarchy::client::wallet_extension::wallet_extension_contract::WalletExtension;
-use crate::core::zkps::plonky2::Plonky2SystemHandle;
+use crate::core::hierarchy::client::wallet_extension::wallet_extension_types::WalletExtension;
 use crate::core::zkps::proof::ZkProof;
-use crate::core::error::errors::SystemError;
 use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
-use crate::core::types::boc::BOC;
-use crate::core::zkps::proof::ProofMetadata;
-
-use ed25519_dalek::Signature;
-use std::collections::HashMap;
-use std::fmt;
 use std::sync::{Arc, RwLock};
 
 /// Represents a transaction in the Overpass Channels system
@@ -49,24 +41,11 @@ impl TransactionOCData {
 
     /// Gets the transaction type
     pub fn get_transaction_type(&self) -> TransactionType {
-        self.transaction_type
+        self.transaction_type.clone()
     }
 
     /// Gets the wallet extension
     pub fn get_wallet_extension(&self) -> Arc<RwLock<WalletExtension>> {
         self.wallet_extension.clone()
-    } 
-
-    pub fn get_transaction_id(&self) -> [u8; 32] {
-        self.transaction_id
     }
-
-    pub fn get_transaction_type(&self) -> TransactionType {
-        self.transaction_type
-    }
-
-    pub fn get_wallet_extension(&self) -> Arc<RwLock<WalletExtension>> {
-        self.wallet_extension.clone()
-    }   
-    
-} 
+}
