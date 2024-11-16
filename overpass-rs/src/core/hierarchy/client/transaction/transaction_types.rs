@@ -205,10 +205,13 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::sync::RwLock;
+    use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
+    use crate::core::zkps::proof::ZkProof;
+    use crate::core::hierarchy::client::transaction::transaction_types::WalletExtension;
 
     // Helper function to create a dummy transaction for testing
     fn create_test_transaction() -> TransactionOCData {
-        let wallet_extension = Arc::new(RwLock::new(WalletExtension::default()));
+        let wallet_extension = Arc::new(RwLock::new(WalletExtension::new()));
         let channel_contract = Arc::new(RwLock::new(ChannelContract::default()));
         let proof = ZkProof::default();
 
@@ -224,9 +227,7 @@ mod tests {
             0,             // Nonce
             1000000,       // Fee
         )
-    }
-
-    #[test]
+    }    #[test]
     fn test_transaction_validation() {
         let transaction = create_test_transaction();
         assert!(transaction.validate());

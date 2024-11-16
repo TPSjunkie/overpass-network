@@ -4,6 +4,8 @@ use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use wasm_bindgen::prelude::*;
 
+use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
+
 // Type alias for ChannelStore
 type ChannelStore = Arc<RwLock<HashMap<[u8; 32], Arc<RwLock<ChannelContract>>>>>;
 
@@ -111,7 +113,7 @@ impl ChannelManager {
             return Err(JsValue::from_str("InvalidChannel"));
         }
 
-        let channel = ChannelContract::new(hex::encode(channel_id));
+        let channel = ChannelContract::new(&hex::encode(channel_id));
         let channel = Arc::new(RwLock::new(channel));
 
         {
@@ -125,9 +127,7 @@ impl ChannelManager {
 
         channels.insert(channel_id, channel);
         Ok(channel_id)
-    }
-
-    fn update_channel_state(
+    }    fn update_channel_state(
         &self,
         channel_id: &[u8; 32],
         new_state: Vec<u8>,
@@ -285,43 +285,6 @@ fn serialize_channel(channel: &Arc<RwLock<ChannelContract>>) -> Vec<u8> {
     serialized
 }
 
-#[wasm_bindgen]
-impl ChannelContract {
-    #[wasm_bindgen(constructor)]
-    pub fn new(id: String) -> ChannelContract {
-        ChannelContract {
-            id,
-            balance: 0,
-            nonce: 0,
-            seqno: 0,
-        }
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn balance(&self) -> u64 {
-        self.balance
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn nonce(&self) -> u64 {
-        self.nonce
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn seqno(&self) -> u64 {
-        self.seqno
-    }
-
-    pub fn update_balance(&mut self, amount: u64) -> Result<(), JsValue> {
-        self.balance = amount;
-        Ok(())
-    }
-}
 
 #[wasm_bindgen]
 #[derive(Debug)]

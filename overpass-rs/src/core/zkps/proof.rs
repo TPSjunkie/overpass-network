@@ -5,14 +5,13 @@ use plonky2::plonk::circuit_data::CircuitConfig;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct ZkProof {
     pub proof_data: Vec<u8>,
     pub public_inputs: Vec<u64>,
     pub merkle_root: Vec<u8>,
     pub timestamp: u64,
 }
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ProofType {
     StateTransition = 0,

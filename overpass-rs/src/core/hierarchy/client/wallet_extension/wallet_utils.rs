@@ -1,21 +1,8 @@
-use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::hierarchy::client::*;
-use crate::core::storage_node::*;
-use crate::core::tokens::*;
-use crate::core::types::*;
-use crate::core::zkps::proof::*;
-use crate::core::zkps::zkp_interface::*;
-use crate::core::zkps::{plonky2::*, *};
-use js_sys::{Date, Promise, Uint8Array};
+use js_sys::Uint8Array;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
-use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
-use std::sync::{Arc, RwLock};
+use sha2::Digest;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::future_to_promise;
-use web_sys::{console, window};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_APPEND_CONTENT: &'static str = r#"
