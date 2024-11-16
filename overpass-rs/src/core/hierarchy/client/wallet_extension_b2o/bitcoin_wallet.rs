@@ -1,13 +1,11 @@
 // ./src/core/hierarchy/client/channel/bitcoin_channel.rs
 
-use bitcoin_hashes::{Hash};
-use secp256k1::{PublicKey, Secp256k1};
+use bitcoin::hashes::{sha256, Hash};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use bitcoin::{Network, Transaction, TxIn, TxOut, Script};
-use secp256k1::{SecretKey, Secp256k1};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
-
 use crate::core::hierarchy::client::channel::bitcoin_channel::{
     BitcoinChannel, BitcoinChannelState, ChannelError, ChannelStatus
 };
