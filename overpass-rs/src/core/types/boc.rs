@@ -190,13 +190,6 @@ impl BOC {
         Self::default()
     }
 
-    /// Adds a `Cell` to the `BOC` and returns its index.
-    pub fn add_cell(&mut self, cell: Cell) -> usize {
-        let index = self.cells.len();
-        self.cells.push(cell);
-        index
-    }
-
     /// Adds a root index to the `BOC`.
     pub fn add_root(&mut self, index: usize) {
         self.roots.push(index);
@@ -227,6 +220,116 @@ impl BOC {
             None
         }
     }
+
+
+    /// Adds cell data and returns the cell index
+    pub fn add_cell(&mut self, data: Vec<u8>) -> Result<usize, SystemError> {
+        let mut cell = Cell::with_data(data);
+        cell.update_merkle_hash();
+        let index = self.cells.len();
+        self.cells.push(cell);
+        Ok(index)
+    }
+
+    /// Adds a reference between two cells
+    pub fn add_reference(&mut self, from_idx: usize, to_idx: usize) -> Result<(), SystemError> {
+        if from_idx >= self.cells.len() || to_idx >= self.cells.len() {
+            return Err(SystemError::new(
+                SystemErrorType::InvalidReference,
+                "Cell index out of bounds".to_string(),
+            ));
+        }
+
+        if let Some(cell) = self.cells.get_mut(from_idx) {
+            cell.references.push(to_idx);
+            cell.update_merkle_hash();
+            Ok(())
+        } else {
+            Err(SystemError::new(
+                SystemErrorType::InvalidReference,
+                "Source cell not found".to_string(),
+            ))
+        }
+    }
+
+    /// Creates a new cell with proof data
+    pub fn add_proof_cell(&mut self, data: Vec<u8>, proof: Vec<u8>) -> Result<usize, SystemError> {
+        let mut cell = Cell::new(
+            data,
+            Vec::new(),
+            CellType::MerkleProof,
+            [0u8; 32],
+            Some(proof),
+        );
+        cell.update_merkle_hash();
+        let index = self.cells.len();
+        self.cells.push(cell);
+        Ok(index)
+    }
+
+    /// Validates the BOC structure for Bitcoin state conversion
+    pub fn validate_bitcoin_state(&self) -> Result<bool, SystemError> {
+        if self.cells.is_empty() {
+            return Err(SystemError::new(
+                SystemErrorType::InvalidState,
+                "Empty BOC".to_string(),
+            ));
+        }
+
+        // Verify root cell exists and has correct type
+        if let Some(root_cell) = self.get_root_cell() {
+            if root_cell.references.len() != 2 {
+                return Err(SystemError::new(
+                    SystemErrorType::InvalidState,
+                    "Root cell must have exactly two references".to_string(),
+                ));
+            }
+            Ok(true)
+        } else {
+            Err(SystemError::new(
+                SystemErrorType::NoRootCell,
+                "No root cell defined".to_string(),
+            ))
+        }
+    }
+
+    /// Gets the merkle proof for a specific cell
+    pub fn get_merkle_proof(&self, cell_idx: usize) -> Result<Vec<u8>, SystemError> {
+        if let Some(cell) = self.cells.get(cell_idx) {
+            if let Some(proof) = &cell.proof {
+                Ok(proof.clone())
+            } else {
+                Err(SystemError::new(
+                    SystemErrorType::NoProof,
+                    "Cell has no proof data".to_string(),
+                ))
+            }
+        } else {
+            Err(SystemError::new(
+                SystemErrorType::InvalidReference,
+                "Cell index not found".to_string(),
+            ))
+        }
+    }
+
+    /// Extracts Bitcoin state data from the BOC
+    pub fn extract_bitcoin_state(&self) -> Result<Vec<u8>, SystemError> {
+        if let Some(root_cell) = self.get_root_cell() {
+            if root_cell.references.len() != 2 {
+                return Err(SystemError::new(
+                    SystemErrorType::InvalidState,
+                    "Invalid Bitcoin state structure".to_string(),
+                ));
+            }
+            Ok(root_cell.data.clone())
+        } else {
+            Err(SystemError::new(
+                SystemErrorType::NoRootCell,
+                "No root cell defined".to_string(),
+            ))
+        }
+    }
+
 
     /// Returns the number of cells in the `BOC`.
     pub fn cell_count(&self) -> usize {
