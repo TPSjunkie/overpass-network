@@ -9,10 +9,10 @@
 
 
 ## Private, Instant Transactions: 
->Enables private, instant Bitcoin transactions without any third parties. As well as full off-chain Overpass dApp & Smart Contract support ready.
-## Leverage TON's Cells and BOCs:
+>Enables private, instant Bitcoin transactions without any third parties.  As well as full off-chain Overpass dApp & Smart Contract support ready. Integrations to follow or be picked up and worked on in parallel are for this to be implemented in working for Ethereum and TON as well
+## Leverage Cells and BOCs:
  > - Using cells and BOCs, which are key features of
-  > TON, to facilitate this bridge.
+  > to facilitate this bridge.
   >- A slice of a cell is a hash of the cell, which is 
   > used to verify the transaction.
 ## Plonky2 Proof Mechanism:
@@ -84,14 +84,9 @@ Overpass Channels is licensed under the MIT License. See the [LICENSE](LICENSE) 
 
 Overpass Channels is built on top of the following technologies and libraries:
 
+- **Rust** : The programming language used to build the backend of the application.
 
-- [TonConnect](https://github.com/ton-connect): A library for connecting to TON blockchain applications using TonConnect.
-
-- [TonConnect UI React](https://github.com/ton-connect/ui-react): A React library for building TON applications using TonConnect.
-
-- **Rust** ```tonlib-rs``` : The programming language used to build the backend of the application.
-
-- **Typescript** ```@ton/ton``` ```@ton/core``` ```@ton/crypto``` : The programming language used to build the frontend of the application.
+- **Typescript** : The programming language used to build the frontend of the application.
 
 - **Plonky2** ```plonky2``` : The library used to build the backend of the application.
 
@@ -102,11 +97,6 @@ Overpass Channels is built on top of the following technologies and libraries:
 
 ## External resource links
 
-### TON
-- [TonConnect](https://github.com/ton-connect)
-- [TonConnect UI React](https://github.com/ton-connect/ui-react)
-- [TonConnect UI React](https://github.com/ton-connect/ui-react)
-- [TON](https://ton.org/docs)
 
 ### Rust
 - [Rust Programming Language](https://www.rust-lang.org/)
@@ -143,3 +133,9 @@ Overpass Channels is built on top of the following technologies and libraries:
 ### Ethereum Virtual Machine (EVM)
 - [Ethereum Virtual Machine (EVM)](https://ethereum.org/en/developers/docs/evm/)
 - [Ethereum Virtual Machine (EVM) Opcodes](https://www.evm.codes/)
+
+### TON
+- [TonConnect](https://github.com/ton-connect)
+- [TonConnect UI React](https://github.com/ton-connect/ui-react)
+- [TonConnect UI React](https://github.com/ton-connect/ui-react)
+- [TON](https://ton.org/docs)
