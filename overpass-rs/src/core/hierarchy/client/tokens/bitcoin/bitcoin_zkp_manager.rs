@@ -1,14 +1,14 @@
-    use crate::core::tokens::bitcoin::bitcoin_integration;
+    use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_integration;
     use core::marker::PhantomData;
     use frame_support::
         traits::{Currency, WithdrawReasons}
     ;
     use sp_runtime::DispatchResult;
-    use crate::core::tokens::bitcoin::bitcoin_proof::{BitcoinProofBoc, BitcoinZkProof};
-    use crate::core::tokens::bitcoin::bitcoin_types::{BitcoinError, BitcoinNetwork};
-    use crate::core::tokens::bitcoin::bitcoin_integration::{Bitcoin, BitcoinConfig};
+    use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_proof::BitcoinProofBoc;
+    use crate::core::zkps::bitcoin::bitcoin_proof::BitcoinZkProof;
+    use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_types::{BitcoinError, BitcoinNetwork};
+    use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_integration::{Bitcoin, BitcoinConfig};
     use crate::core::zkps::proof::{ProofMetadata, ProofType};
-
     use crate::core::zkps::plonky2::Plonky2SystemHandle;
 
     /// Manager for Bitcoin operations with zero-knowledge proof integration
