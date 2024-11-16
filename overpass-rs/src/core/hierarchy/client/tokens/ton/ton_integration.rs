@@ -10,10 +10,7 @@ use sp_runtime::{
     traits::MaybeSerializeDeserialize, DispatchResult,
 };
 
-use super::token_types::{
-    TokenNetwork, TokenError, TokenAccountData, TokenTransactionData, TokenBalance,
-};
-
+use crate::core::hierarchy::client::tokens::token_types::*;
 /// Configuration trait for TON integration
 pub trait TONConfig: Eq + Clone {
     /// The native currency type

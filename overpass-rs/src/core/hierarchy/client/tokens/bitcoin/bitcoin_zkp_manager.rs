@@ -4,8 +4,7 @@
         traits::{Currency, WithdrawReasons}
     ;
     use sp_runtime::DispatchResult;
-    use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_proof::BitcoinProofBoc;
-    use crate::core::zkps::bitcoin::bitcoin_proof::BitcoinZkProof;
+    use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_proof::*;
     use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_types::{BitcoinError, BitcoinNetwork};
     use crate::core::hierarchy::client::tokens::bitcoin::bitcoin_integration::{Bitcoin, BitcoinConfig};
     use crate::core::zkps::proof::{ProofMetadata, ProofType};

@@ -19,9 +19,7 @@ use crate::core::hierarchy::client::channel::bitcoin_state::{
     BitcoinChannelState, HTLCState
 };
 use crate::core::hierarchy::client::channel::bitcoin_transaction::BitcoinTransaction;
-use crate::core::zkps::bitcoin::bitcoin_proof::{
-    BitcoinZkProof, BitcoinProofBundle, BitcoinProofType
-};
+use crate::core::hierarchy::client::tokens::bitcoin::*;
 
 const D: usize = 2;
 type F = GoldilocksField;

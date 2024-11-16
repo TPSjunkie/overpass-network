@@ -1,4 +1,4 @@
-use bitcoin_hashes::{
+use bitcoin::{
     Transaction, TxIn, TxOut, OutPoint, Script, SigHashType, PublicKey,
     consensus::encode::serialize, BlockHash, TxId
 };
@@ -445,212 +445,212 @@ impl TransactionBuilder {
             .push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG)
             .push_opcode(bitcoin::blockdata::opcodes::all::OP_ELSE)
             // Sender's refund path with timelock
-            .push_int(timelock as i64)
-            .push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKLOCKTIMEVERIFY)
-            .push_opcode(bitcoin::blockdata::opcodes::all::OP_DROP)
-            .push_slice(&refund_pubkey.serialize())
-            .push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG)
-            .push_opcode(bitcoin::blockdata::opcodes::all::OP_ENDIF)
-            .into_script())
-    }
- }
- 
- fn hash_preimage(preimage: &[u8; 32]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(preimage);
-    let result = hasher.finalize();
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(&result);
-    hash
- }
- 
- #[cfg(test)]
- mod tests {
-    use super::*;
-    use bitcoin::Network;
- 
-    fn create_test_builder() -> TransactionBuilder {
-        let secret_key = SecretKey::new(&mut rand::thread_rng());
-        TransactionBuilder::new(secret_key, Network::Testnet)
-    }
- 
-    fn create_test_channel_state() -> BitcoinChannelState {
-        BitcoinChannelState::new(
-            [0u8; 32],
-            1_000_000,
-            100_000,
-        )
-    }
- 
-    fn create_test_htlc_state(amount: u64, timelock: u32) -> HTLCState {
-        let secp = Secp256k1::new();
-        let recipient_key = SecretKey::new(&mut rand::thread_rng());
-        let refund_key = SecretKey::new(&mut rand::thread_rng());
- 
-        HTLCState {
-            status: HTLCStatus::Pending,
-            amount,
-            timelock,
-            preimage_hash: Some([0u8; 32]),
-            preimage: Some([0u8; 32]),
-            recipient_pubkey: Some(PublicKey::from_secret_key(&secp, &recipient_key)),
-            refund_pubkey: Some(PublicKey::from_secret_key(&secp, &refund_key)),
-            signature: None,
-            execution_txid: Some([0u8; 32]),
-        }
-    }
- 
-    #[test]
-    fn test_funding_transaction_creation() {
-        let builder = create_test_builder();
-        let channel_state = create_test_channel_state();
- 
-        // Add test UTXO
-        let outpoint = OutPoint {
-            txid: [0u8; 32].into(),
-            vout: 0,
-        };
-        builder.utxo_set.insert(outpoint, TxOut {
-            value: 2_000_000,
-            script_pubkey: Script::new(),
-        });
- 
-        let result = builder.create_funding_transaction(
-            &channel_state,
-            vec![outpoint],
-            1000,
-        );
- 
-        assert!(result.is_ok());
-        let tx = result.unwrap();
-        assert_eq!(tx.metadata.tx_type, TransactionType::Funding);
-        assert_eq!(tx.tx_data.output[0].value, channel_state.balance);
-    }
- 
-    #[test]
-    fn test_htlc_transaction_creation() {
-        let builder = create_test_builder();
-        let mut channel_state = create_test_channel_state();
-        let htlc_state = create_test_htlc_state(500_000, 144);
- 
-        // Set closure txid
-        channel_state.metadata.closure_txid = Some([0u8; 32]);
- 
-        let result = builder.create_htlc_transaction(
-            &channel_state,
-            &htlc_state,
-            1000,
-        );
- 
-        assert!(result.is_ok());
-        let tx = result.unwrap();
-        assert_eq!(tx.metadata.tx_type, TransactionType::HTLCCreate);
-        assert_eq!(tx.tx_data.output[0].value, htlc_state.amount);
-    }
- 
-    #[test]
-    fn test_htlc_execution() {
-        let builder = create_test_builder();
-        let mut channel_state = create_test_channel_state();
-        let htlc_state = create_test_htlc_state(500_000, 144);
-        let preimage = [0u8; 32];
- 
-        // Set required txid
-        channel_state.metadata.closure_txid = Some([0u8; 32]);
- 
-        let result = builder.create_htlc_execution_transaction(
-            &channel_state,
-            &htlc_state,
-            &preimage,
-            1000,
-        );
- 
-        assert!(result.is_ok());
-        let tx = result.unwrap();
-        assert_eq!(tx.metadata.tx_type, TransactionType::HTLCExecute);
-    }
- 
-    #[test]
-    fn test_htlc_refund() {
-        let builder = create_test_builder();
-        let mut channel_state = create_test_channel_state();
-        let mut htlc_state = create_test_htlc_state(500_000, 144);
- 
-        // Set block height past timelock
-        channel_state.block_height = htlc_state.timelock + 1;
-        htlc_state.execution_txid = Some([0u8; 32]);
- 
-        let result = builder.create_htlc_refund_transaction(
-            &channel_state,
-            &htlc_state,
-            1000,
-        );
- 
-        assert!(result.is_ok());
-        let tx = result.unwrap();
-        assert_eq!(tx.metadata.tx_type, TransactionType::HTLCRefund);
-    }
- 
-    #[test]
-    fn test_closing_transaction() {
-        let builder = create_test_builder();
-        let mut channel_state = create_test_channel_state();
-        
-        // Set closure txid
-        channel_state.metadata.closure_txid = Some([0u8; 32]);
- 
-        let result = builder.create_closing_transaction(
-            &channel_state,
-            Script::new(),
-            1000,
-        );
- 
-        assert!(result.is_ok());
-        let tx = result.unwrap();
-        assert_eq!(tx.metadata.tx_type, TransactionType::ChannelClose);
-        assert_eq!(tx.tx_data.output[0].value, channel_state.balance - 1000);
-    }
- 
-    #[test]
-    fn test_insufficient_funds() {
-        let builder = create_test_builder();
-        let channel_state = create_test_channel_state();
- 
-        // Add test UTXO with insufficient funds
-        let outpoint = OutPoint {
-            txid: [0u8; 32].into(),
-            vout: 0,
-        };
-        builder.utxo_set.insert(outpoint, TxOut {
-            value: 100_000, // Less than channel balance
-            script_pubkey: Script::new(),
-        });
- 
-        let result = builder.create_funding_transaction(
-            &channel_state,
-            vec![outpoint],
-            1000,
-        );
- 
-        assert!(matches!(result, Err(TransactionError::InsufficientFunds)));
-    }
- 
-    #[test]
-    fn test_invalid_htlc_timelock() {
-        let builder = create_test_builder();
-        let mut channel_state = create_test_channel_state();
-        let htlc_state = create_test_htlc_state(500_000, 144);
- 
-        // Set block height before timelock
-        channel_state.block_height = htlc_state.timelock - 1;
-        channel_state.metadata.closure_txid = Some([0u8; 32]);
- 
-        let result = builder.create_htlc_refund_transaction(
-            &channel_state,
-            &htlc_state,
-            1000,
-        );
- 
-        assert!(matches!(result, Err(TransactionError::InvalidState)));
-    }
- }
+.push_int(timelock as i64)
+           .push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKLOCKTIMEVERIFY)
+           .push_opcode(bitcoin::blockdata::opcodes::all::OP_DROP)
+           .push_slice(&refund_pubkey.serialize())
+           .push_opcode(bitcoin::blockdata::opcodes::all::OP_CHECKSIG)
+           .push_opcode(bitcoin::blockdata::opcodes::all::OP_ENDIF)
+           .into_script())
+   }
+}
+
+fn hash_preimage(preimage: &[u8; 32]) -> [u8; 32] {
+   let mut hasher = Sha256::new();
+   hasher.update(preimage);
+   let result = hasher.finalize();
+   let mut hash = [0u8; 32];
+   hash.copy_from_slice(&result);
+   hash
+}
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+   use bitcoin::Network;
+
+   fn create_test_builder() -> TransactionBuilder {
+       let secret_key = SecretKey::new(&mut rand::thread_rng());
+       TransactionBuilder::new(secret_key, Network::Testnet)
+   }
+
+   fn create_test_channel_state() -> BitcoinChannelState {
+       BitcoinChannelState::new(
+           [0u8; 32],
+           1_000_000,
+           100_000,
+       )
+   }
+
+   fn create_test_htlc_state(amount: u64, timelock: u32) -> HTLCState {
+       let secp = Secp256k1::new();
+       let recipient_key = SecretKey::new(&mut rand::thread_rng());
+       let refund_key = SecretKey::new(&mut rand::thread_rng());
+
+       HTLCState {
+           status: HTLCStatus::Pending,
+           amount,
+           timelock,
+           preimage_hash: Some([0u8; 32]),
+           preimage: Some([0u8; 32]),
+           recipient_pubkey: Some(PublicKey::from_secret_key(&secp, &recipient_key)),
+           refund_pubkey: Some(PublicKey::from_secret_key(&secp, &refund_key)),
+           signature: None,
+           execution_txid: Some([0u8; 32]),
+       }
+   }
+
+   #[test]
+   fn test_funding_transaction_creation() {
+       let builder = create_test_builder();
+       let channel_state = create_test_channel_state();
+
+       // Add test UTXO
+       let outpoint = OutPoint {
+           txid: [0u8; 32].into(),
+           vout: 0,
+       };
+       builder.utxo_set.insert(outpoint, TxOut {
+           value: 2_000_000,
+           script_pubkey: Script::new(),
+       });
+
+       let result = builder.create_funding_transaction(
+           &channel_state,
+           vec![outpoint],
+           1000,
+       );
+
+       assert!(result.is_ok());
+       let tx = result.unwrap();
+       assert_eq!(tx.metadata.tx_type, TransactionType::Funding);
+       assert_eq!(tx.tx_data.output[0].value, channel_state.balance);
+   }
+
+   #[test]
+   fn test_htlc_transaction_creation() {
+       let builder = create_test_builder();
+       let mut channel_state = create_test_channel_state();
+       let htlc_state = create_test_htlc_state(500_000, 144);
+
+       // Set closure txid
+       channel_state.metadata.closure_txid = Some([0u8; 32]);
+
+       let result = builder.create_htlc_transaction(
+           &channel_state,
+           &htlc_state,
+           1000,
+       );
+
+       assert!(result.is_ok());
+       let tx = result.unwrap();
+       assert_eq!(tx.metadata.tx_type, TransactionType::HTLCCreate);
+       assert_eq!(tx.tx_data.output[0].value, htlc_state.amount);
+   }
+
+   #[test]
+   fn test_htlc_execution() {
+       let builder = create_test_builder();
+       let mut channel_state = create_test_channel_state();
+       let htlc_state = create_test_htlc_state(500_000, 144);
+       let preimage = [0u8; 32];
+
+       // Set required txid
+       channel_state.metadata.closure_txid = Some([0u8; 32]);
+
+       let result = builder.create_htlc_execution_transaction(
+           &channel_state,
+           &htlc_state,
+           &preimage,
+           1000,
+       );
+
+       assert!(result.is_ok());
+       let tx = result.unwrap();
+       assert_eq!(tx.metadata.tx_type, TransactionType::HTLCExecute);
+   }
+
+   #[test]
+   fn test_htlc_refund() {
+       let builder = create_test_builder();
+       let mut channel_state = create_test_channel_state();
+       let mut htlc_state = create_test_htlc_state(500_000, 144);
+
+       // Set block height past timelock
+       channel_state.block_height = htlc_state.timelock + 1;
+       htlc_state.execution_txid = Some([0u8; 32]);
+
+       let result = builder.create_htlc_refund_transaction(
+           &channel_state,
+           &htlc_state,
+           1000,
+       );
+
+       assert!(result.is_ok());
+       let tx = result.unwrap();
+       assert_eq!(tx.metadata.tx_type, TransactionType::HTLCRefund);
+   }
+
+   #[test]
+   fn test_closing_transaction() {
+       let builder = create_test_builder();
+       let mut channel_state = create_test_channel_state();
+       
+       // Set closure txid
+       channel_state.metadata.closure_txid = Some([0u8; 32]);
+
+       let result = builder.create_closing_transaction(
+           &channel_state,
+           Script::new(),
+           1000,
+       );
+
+       assert!(result.is_ok());
+       let tx = result.unwrap();
+       assert_eq!(tx.metadata.tx_type, TransactionType::ChannelClose);
+       assert_eq!(tx.tx_data.output[0].value, channel_state.balance - 1000);
+   }
+
+   #[test]
+   fn test_insufficient_funds() {
+       let builder = create_test_builder();
+       let channel_state = create_test_channel_state();
+
+       // Add test UTXO with insufficient funds
+       let outpoint = OutPoint {
+           txid: [0u8; 32].into(),
+           vout: 0,
+       };
+       builder.utxo_set.insert(outpoint, TxOut {
+           value: 100_000, // Less than channel balance
+           script_pubkey: Script::new(),
+       });
+
+       let result = builder.create_funding_transaction(
+           &channel_state,
+           vec![outpoint],
+           1000,
+       );
+
+       assert!(matches!(result, Err(TransactionError::InsufficientFunds)));
+   }
+
+   #[test]
+   fn test_invalid_htlc_timelock() {
+       let builder = create_test_builder();
+       let mut channel_state = create_test_channel_state();
+       let htlc_state = create_test_htlc_state(500_000, 144);
+
+       // Set block height before timelock
+       channel_state.block_height = htlc_state.timelock - 1;
+       channel_state.metadata.closure_txid = Some([0u8; 32]);
+
+       let result = builder.create_htlc_refund_transaction(
+           &channel_state,
+           &htlc_state,
+           1000,
+       );
+
+       assert!(matches!(result, Err(TransactionError::InvalidState)));
+   }
+}
