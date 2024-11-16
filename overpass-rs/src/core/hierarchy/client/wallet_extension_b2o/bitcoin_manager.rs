@@ -2,7 +2,7 @@
 use crate::core::hierarchy::intermediate::state_tracking_i::ProofType;
 use crate::core::zkps::proof::ProofMetadata;
 use crate::core::tokens::bitcoin::bitcoin_integration;
-use crate::core::tokens::bitcoin::bitcoin_transaction::VerificationResult;
+use crate::core::hierarchy::client::channel::bitcoin_transaction::BitcoinTransaction;
 use codec::Decode;
 use core::marker::PhantomData;
 use frame_support::
@@ -42,7 +42,7 @@ impl<T: BitcoinConfig> BitcoinManager<T>where
         network: BitcoinNetwork,  
         who: &T::AccountId,  
         amount: T::Balance,  
-    ) -> Result<(DispatchResult, Vec<u8>), BitcoinError> where <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance> where <<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance: From<<T as bitcoin_integration::BitcoinConfig>::Balance> where <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance> where <<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance: From<<T as BitcoinConfig>::Balance> { 
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
         // Create proof metadata  
         let metadata = ProofMetadata {
             version: 1,  
@@ -60,13 +60,14 @@ impl<T: BitcoinConfig> BitcoinManager<T>where
 
         Ok((deposit_result, proof))
     }
+
     /// Process a withdrawal with zero-knowledge proof
     pub async fn process_withdrawal_with_proof(
         &self,
         network: BitcoinNetwork,
         who: &T::AccountId,
         amount: T::Balance,
-    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> where <T as bitcoin_integration::BitcoinConfig>::Balance: From<<<T as bitcoin_integration::BitcoinConfig>::NativeCurrency as Currency<<T as bitcoin_integration::BitcoinConfig>::AccountId>>::Balance> where <T as BitcoinConfig>::Balance: From<<<T as BitcoinConfig>::NativeCurrency as Currency<<T as BitcoinConfig>::AccountId>>::Balance> {
+    ) -> Result<(DispatchResult, ZkProofSlice), BitcoinError> {
         // Create proof metadata
         let metadata = ProofMetadata {
             version: 1,

@@ -61,8 +61,8 @@
                 )
                 .map_err(|e| BitcoinError::ProofVerificationFailed(format!("Failed to generate proof: {:?}", e)))?;
 
-            // Create ZkProofBoc with the generated proof
-            let boc = ZkProofBoc {
+            // Create BitcoinProofBoc with the generated proof
+            let boc = BitcoinProofBoc {
                 proof_data: proof_bytes,
                 vk_hash: self.calculate_verification_key_hash(metadata.proof_type)?,
                 public_inputs: vec![
@@ -83,8 +83,7 @@
             let deposit_result = self.bitcoin.deposit(self.network, who, amount);
 
             Ok((deposit_result, proof_slice))
-        }
-        /// Generate a proof for a withdrawal operation
+        }        /// Generate a proof for a withdrawal operation
         pub async fn withdraw_with_proof(
             &self,
             who: &T::AccountId,
