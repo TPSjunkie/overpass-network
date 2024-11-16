@@ -10,3 +10,4 @@ pub mod wallet_extension_contract;
 pub mod wallet_extension_types;
 pub mod wallet_utils;
 pub mod zkp_transaction;
+pub mod bitcoin;

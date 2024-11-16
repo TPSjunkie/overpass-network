@@ -1,5 +1,5 @@
-use crate::core::hierarchy::client::tokens::token_oc_data::{TokenOCData, TokenOCManager, TokenOCTransaction};
-use crate::core::hierarchy::client::tokens::transaction_oc_data::TransactionOCData;
+use crate::core::hierarchy::client::tokens::token_oc_data::TokenOCData;
+use crate::core::hierarchy::client::transaction_oc_data::TransactionOCData;
 
 impl TokenWallet {
     pub fn new(token_oc_data: TokenOCData, transaction_oc_data: TransactionOCData) -> Self {
