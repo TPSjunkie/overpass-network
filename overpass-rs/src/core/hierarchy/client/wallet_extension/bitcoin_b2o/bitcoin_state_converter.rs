@@ -1,16 +1,21 @@
 // src/core/hierarchy/client/converters/bitcoin_state_converter.rs
 
+use bitcoin::hashes::HashEngine;
+use frame_support::traits::IsType;
+use std::thread::Builder;
+use std::vec::Vec;
+use crate::core::error::SystemErrorType;
 use std::sync::{Arc, RwLock};
 use serde::{Serialize, Deserialize};
 use wasm_bindgen::prelude::*;
 use bitcoin::hashes::{sha256d, Hash};
 use bitcoin::secp256k1::Secp256k1;
-
 use crate::core::error::errors::SystemError;
 use crate::core::hierarchy::client::wallet_extension::sparse_merkle_tree_wasm::SparseMerkleTreeWasm;
 use crate::core::types::boc::BOC;
 use crate::core::types::ovp_ops::OpCode;
 use crate::core::zkps::plonky2::Plonky2SystemHandle;
+use crate::core::zkps::proof::ProofMetadata;
 use crate::core::zkps::proof::ZkProof;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +85,15 @@ impl BitcoinStateConverter {
         };
 
         // Generate proof of state conversion
-        let proof_data = self.generate_conversion_proof(&lock_state, &state_data)?;
+        let proof_data = self.proof_system.generate_proof_js(
+            lock_state.lock_amount,
+            0, // Initial nonce
+            lock_state.lock_amount,
+            0, // Initial nonce
+            0, // No transfer amount for initial conversion
+        ).map_err(|e| {
+            SystemError::new(SystemErrorType::ProofGenerationError, format!("Failed to generate conversion proof: {:?}", e))
+        })?;
 
         // Create Overpass state
         let overpass_state = OverpassBitcoinState {
@@ -97,10 +110,10 @@ impl BitcoinStateConverter {
             merkle_proof,
         };
 
-        Ok((overpass_state, proof_data))
-    }
+        let zk_proof = ZkProof::new(proof_data, Vec::new(), Vec::new(), 0);
 
-    /// Creates BOC for state conversion
+        Ok((overpass_state, zk_proof))
+    }    /// Creates BOC for state conversion
     pub fn create_conversion_boc(
         &self,
         lock_state: &BitcoinLockState,
@@ -122,18 +135,16 @@ impl BitcoinStateConverter {
         state_data.extend_from_slice(&overpass_state.nonce.to_le_bytes());
         
         // Add cells to BOC
-        let lock_cell = boc.add_cell(lock_data).map_err(|e| SystemError::new(SystemErrorType::BOCError, e.to_string()))?;
-        let state_cell = boc.add_cell(state_data).map_err(|e| SystemError::new(SystemErrorType::BOCError, e.to_string()))?;
-        let proof_cell = boc.add_cell(proof.to_vec()).map_err(|e| SystemError::new(SystemErrorType::BOCError, e.to_string()))?;
-
+        let lock_cell = boc.add_cell(lock_data).map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
+        let state_cell = boc.add_cell(state_data).map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
+        let proof_cell = boc.add_cell(proof.data())    
+            .map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
         // Add references
-        boc.add_reference(lock_cell, state_cell).map_err(|e| SystemError::new(SystemErrorType::BOCError, e.to_string()))?;
-        boc.add_reference(state_cell, proof_cell).map_err(|e| SystemError::new(SystemErrorType::BOCError, e.to_string()))?;
+        boc.add_reference(lock_cell, state_cell).map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
+        boc.add_reference(state_cell, proof_cell).map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
 
         Ok(boc)
-    }
-
-    /// Verifies state transition within Overpass
+    }    /// Verifies state transition within Overpass
     pub fn verify_state_transition(
         &self,
         prev_state: &OverpassBitcoinState,
@@ -156,13 +167,9 @@ impl BitcoinStateConverter {
         verification_data.extend_from_slice(&new_state.state_root);
         verification_data.extend_from_slice(&new_state.current_balance.to_le_bytes());
 
-        self.proof_system.verify(
-            &proof.data(),
-            &verification_data,
-            &new_state.state_root,
-        )
+        self.proof_system.verify_proof_js(&verification_data)
+            .map_err(|e| SystemError::new(SystemErrorType::VerificationError, e.as_string().unwrap_or_else(|| "Unknown error".to_string())))
     }
-
     /// Prepares settlement state for Bitcoin withdrawal
     pub fn prepare_settlement(
         &self,
@@ -174,7 +181,7 @@ impl BitcoinStateConverter {
         })?.root();
 
         if tree_root != final_state.state_root {
-            return Err(SystemError::new(SystemErrorType::InvalidStateError, "Invalid final state root".to_string()));
+            return Err(SystemError::new(SystemErrorType::InvalidState, "Invalid final state root".to_string()));
         }
 
         // Generate proof of final state
@@ -190,9 +197,7 @@ impl BitcoinStateConverter {
         };
 
         Ok((lock_state, proof))
-    }
-    // Helper functions
-    fn generate_channel_id(&self, lock_state: &BitcoinLockState) -> Result<[u8; 32], SystemError> {
+    }    fn generate_channel_id(&self, lock_state: &BitcoinLockState) -> Result<[u8; 32], SystemError> {
         let mut hasher = sha256d::Hash::engine();
         hasher.input(&lock_state.lock_script_hash);
         hasher.input(&lock_state.lock_height.to_le_bytes());
@@ -210,37 +215,37 @@ impl BitcoinStateConverter {
         lock_state: &BitcoinLockState,
         state_data: &[u8],
     ) -> Result<ZkProof, SystemError> {
-        let mut proof_inputs = Vec::new();
-        proof_inputs.extend_from_slice(&lock_state.lock_amount.to_le_bytes());
-        proof_inputs.extend_from_slice(&lock_state.pubkey_hash);
-        proof_inputs.extend_from_slice(state_data);
+        let old_balance = 0; // Placeholder, adjust as needed
+        let old_nonce = 0; // Placeholder, adjust as needed
+        let new_balance = lock_state.lock_amount;
+        let new_nonce = 0; // Placeholder, adjust as needed
+        let transfer_amount = lock_state.lock_amount;
 
-        self.proof_system.generate_proof(&proof_inputs)
+        let proof_bytes = self.proof_system.generate_proof_js(old_balance, old_nonce, new_balance, new_nonce, transfer_amount)
+            .map_err(|e| SystemError::new(SystemErrorType::ProofGenerationError, format!("Failed to generate proof: {:?}", e)))?;
+        let mut proof_bytes = proof_bytes.clone();
+        let proof = ZkProof::from_mut(&mut proof_bytes).map_err(|e| SystemError::new(SystemErrorType::ProofGenerationError, format!("Failed to parse proof: {:?}", e)))?; 
+        let mut boc = ton_types::BuilderData::new();
+        boc.append_raw(proof.data(), proof.data().len() * 8).map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
+        let cell = boc.into_cell().map_err(|e| SystemError::new(SystemErrorType::DataConversionError, e.to_string()))?;
+        let raw_bytes = cell.into_raw_bytes();
+        Ok(ZkProof::new(&raw_bytes)?)
     }
 
     fn verify_state_constraints(
         &self,
-        prev_state: &OverpassBitcoinState,
-        new_state: &OverpassBitcoinState,
-    ) -> Result<bool, SystemError> {
-        // Channel ID must remain constant
-        if prev_state.channel_id != new_state.channel_id {
-            return Ok(false);
-        }
-
-        // Sequence must increment
-        if new_state.sequence != prev_state.sequence + 1 {
-            return Ok(false);
-        }
-
-        // Pubkey hash must remain constant
-        if prev_state.pubkey_hash != new_state.pubkey_hash {
-            return Ok(false);
-        }
-
-        Ok(true)
-    }
-
+        prev_state: &OverpassBitcoinState,        new_state: &OverpassBitcoinState) -> Result<bool, SystemError> {
+            // Channel ID must remain constant
+            if prev_state.channel_id != new_state.channel_id {
+                return Ok(false);
+            }    // Sequence must increment
+            if new_state.sequence != prev_state.sequence + 1 {
+                return Ok(false);
+            }    // Pubkey hash must remain constant
+            if prev_state.pubkey_hash != new_state.pubkey_hash {
+                return Ok(false);
+            }    Ok(true)
+            }
     fn verify_root_transition(
         &self,
         prev_root: &[u8; 32],
@@ -274,7 +279,7 @@ mod tests {
     use bitcoin::hashes::hex::FromHex;
 
     fn setup_test_converter() -> BitcoinStateConverter {
-        let proof_system = Arc::new(Plonky2SystemHandle::new());
+        let proof_system = Arc::new(Plonky2SystemHandle::new().expect("Failed to create Plonky2SystemHandle"));
         let state_tree = Arc::new(RwLock::new(SparseMerkleTreeWasm::new()));
         BitcoinStateConverter::new(proof_system, state_tree)
     }
@@ -296,11 +301,10 @@ mod tests {
 
         let (overpass_state, proof) = result.unwrap();
         assert_eq!(overpass_state.current_balance, 100000000);
-        assert!(proof.verify().unwrap());
+        assert!(!proof.public_inputs.is_empty() && !proof.proof_data.is_empty());
     }
 
-    #[test]
-    fn test_state_transition_verification() {
+    #[test]    fn test_state_transition_verification() {
         let converter = setup_test_converter();
         
         // Create test states

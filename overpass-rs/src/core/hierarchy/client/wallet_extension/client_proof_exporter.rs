@@ -2,7 +2,7 @@
 // This module is responsible for exporting the wallet root and its associated proof in a BOC (Bag of Cells) format for submission to the intermediate layer.
 
 use frame_support::{Deserialize, Serialize};
-use crate::core::{error::SystemError, types::boc::hash};
+use crate::core::error::SystemError;
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
 use sha2::{Digest, Sha256};
@@ -34,7 +34,7 @@ impl WalletRootProof {
 
         let mut hasher = Sha256::new();
         hasher.update(&data);
-        let hash = hasher.finalize();
+        let _hash = hasher.finalize();
         
         Ok(BOC::new())
     }

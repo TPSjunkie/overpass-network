@@ -1,12 +1,16 @@
-use crate::core::hierarchy::client::tokens::token_oc_data::TokenOCData;
-use crate::core::hierarchy::client::transaction_oc_data::TransactionOCData;
+use crate::core::hierarchy::client::wallet_extension::token_oc_data::TokenOCData;
+use crate::core::hierarchy::client::transaction::transaction_oc_data::TransactionOCData;
+
+pub struct TokenWallet {
+    token_oc_data: Option<TokenOCData>,
+    transaction_oc_data: Option<TransactionOCData>,
+}
 
 impl TokenWallet {
     pub fn new(token_oc_data: TokenOCData, transaction_oc_data: TransactionOCData) -> Self {
         Self {
             token_oc_data: Some(token_oc_data),
             transaction_oc_data: Some(transaction_oc_data),
-            ..Default::default()
         }
     }
 

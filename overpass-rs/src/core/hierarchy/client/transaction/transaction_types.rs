@@ -216,7 +216,7 @@ mod tests {
 
     // Helper function to create a dummy transaction for testing
     fn create_test_transaction() -> TransactionOCData {
-        let wallet_extension = Arc::new(RwLock::new(wallet_extension_contract::WalletExtension::default()));
+        let wallet_extension = Arc::new(RwLock::new(WalletExtension::default()));
         let channel_contract = Arc::new(RwLock::new(channel_contract::ChannelContract::new(&hex::encode([0u8; 32]))));
         let proof = ZkProof::default();
 
@@ -232,8 +232,7 @@ mod tests {
             0,             // Nonce
             1000000,       // Fee
         )
-    }
-    #[test]    fn test_transaction_validation() {
+    }    #[test]    fn test_transaction_validation() {
         let transaction = create_test_transaction();
         assert!(transaction.validate());
     }
