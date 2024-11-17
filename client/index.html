@@ -1,323 +1,39 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/martian-mono/1.0.0/web/woff2/martianmono-std-bd.woff2" rel="stylesheet">
-    <style>
-        @font-face {
-            font-family: 'Martian Mono';
-            src: url('https://cdnjs.cloudflare.com/ajax/libs/martian-mono/1.0.0/web/woff2/martianmono-std-bd.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <meta name="theme-color" content="#8b956d" />
+    <meta name="tonconnect-manifest" href=" https://overpass.network/tonconnect-manifest.json" />
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <meta http-equiv="Cross-Origin-Resource-Policy" content="cross-origin" />
+    
+    <!-- Updated CSP -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
 
-        @keyframes scanline {
-            0% {
-                transform: translateY(0);
-            }
-            100% {
-                transform: translateY(100vh);
-            }
-        }
+      script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' chrome-extension: blob:;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com;
+      connect-src 'self' https://cdn.tailwindcss.com https://connect.tonhubapi.com https://ton.access.orbs.network https://toncenter.com ws://localhost:* wss://localhost:* blob:;
+      worker-src 'self' blob: 'wasm-unsafe-eval';
+      child-src 'self' blob: chrome-extension:;
+      frame-src 'self' chrome-extension:;
+      media-src 'self' data: blob:;
+      img-src 'self' data: blob:
+    ">
+    
+    <title>Overpass Channels</title>
 
-        @keyframes flicker {
-            0% { opacity: 0.96; }
-            5% { opacity: 0.92; }
-            10% { opacity: 0.97; }
-            15% { opacity: 0.94; }
-            20% { opacity: 0.98; }
-            25% { opacity: 0.93; }
-            30% { opacity: 0.97; }
-            35% { opacity: 0.95; }
-            40% { opacity: 0.98; }
-            45% { opacity: 0.94; }
-            50% { opacity: 0.96; }
-            55% { opacity: 0.93; }
-            60% { opacity: 0.97; }
-            65% { opacity: 0.95; }
-            70% { opacity: 0.98; }
-            75% { opacity: 0.94; }
-            80% { opacity: 0.96; }
-            85% { opacity: 0.92; }
-            90% { opacity: 0.97; }
-            95% { opacity: 0.94; }
-            100% { opacity: 0.96; }
-        }
+    <link rel="icon" type="image/png" href="/logo.png" />
+  
 
-        body {
-            background-color: #9bbc0f;  /* Game Boy's lighter green */
-            color: #0f380f;  /* Game Boy's darkest green */
-            font-family: 'Martian Mono', monospace;
-            margin: 0;
-            padding: 20px;
-            text-shadow: 0 0 5px rgba(15, 56, 15, 0.3);
-            position: relative;
-            overflow-x: hidden;
-            animation: flicker 4s infinite;
-        }
-
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(
-                transparent 50%,
-                rgba(15, 56, 15, 0.05) 50%
-            );
-            background-size: 100% 4px;
-            pointer-events: none;
-            z-index: 1;
-        }
-
-        body::after {
-            content: "";
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: radial-gradient(
-                circle at center,
-                transparent 0,
-                rgba(15, 56, 15, 0.1) 100%
-            );
-            pointer-events: none;
-            z-index: 2;
-        }
-
-        .scanline {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 20px;
-            background: linear-gradient(
-                to bottom,
-                transparent,
-                rgba(15, 56, 15, 0.2),
-                transparent
-            );
-            animation: scanline 8s linear infinite;
-            pointer-events: none;
-            z-index: 3;
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            border: 2px solid #0f380f;
-            padding: 20px;
-            position: relative;
-            background-color: #8bac0f;  /* Game Boy's medium green */
-        }
-
-        .section {
-            border: 1px solid #0f380f;
-            margin: 20px 0;
-            padding: 15px;
-            position: relative;
-        }
-
-        .header {
-            border-bottom: 2px solid #0f380f;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-        }
-
-        h1, h2, h3 {
-            color: #0f380f;
-            text-transform: uppercase;
-            margin: 0;
-            padding: 10px 0;
-        }
-
-        h1 {
-            font-size: 24px;
-            text-align: center;
-            border-bottom: double 3px #0f380f;
-        }
-
-        h2 {
-            font-size: 20px;
-        }
-
-        h3 {
-            font-size: 16px;
-        }
-
-        ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        li {
-            padding: 5px 0 5px 20px;
-            position: relative;
-        }
-
-        li::before {
-            content: ">";
-            position: absolute;
-            left: 0;
-            color: #0f380f;
-        }
-
-        .calculation {
-            background-color: #9bbc0f;  /* Game Boy's lightest green */
-            border: 1px solid #0f380f;
-            padding: 10px;
-            margin: 10px 0;
-        }
-
-        .highlight {
-            color: #0f380f;
-            font-weight: bold;
-        }
-
-        .status-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background-color: #8bac0f;
-            border-top: 2px solid #0f380f;
-            padding: 5px;
-            font-size: 12px;
-            z-index: 4;
-        }
-
-        .metric-card {
-            border: 1px solid #0f380f;
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #9bbc0f;
-        }
-
-        .metric-card:hover {
-            background-color: #8bac0f;
-            cursor: pointer;
-        }
-
-        .calculation:hover {
-            background-color: #8bac0f;
-        }
-    </style>
-</head>
-<body>
-    <div class="scanline"></div>
-    <div class="container">
-        <h1>OVERPASS NETWORK METRICS v1.0</h1>
-
-        <div class="section">
-            <div class="header">
-                <h2>[1] CORE METRICS</h2>
-            </div>
-            <div class="metric-card">
-                <h3>:: PER CHANNEL TRANSACTION TIME</h3>
-                <ul>
-                    <li>ZK-SNARK PROOF GEN/VERIFY TIME</li>
-                    <li>TRANSACTION PROPAGATION TIME</li>
-                </ul>
-            </div>
-            <div class="metric-card">
-                <h3>:: PER WALLET PERFORMANCE</h3>
-                <ul>
-                    <li>ACTIVE CHANNEL COUNT</li>
-                    <li>AGGREGATE TPS/WALLET</li>
-                </ul>
-            </div>
-            <div class="metric-card">
-                <h3>:: CONTRACT CAPACITY</h3>
-                <ul>
-                    <li>WALLET MANAGEMENT CAPACITY</li>
-                    <li>INTERMEDIATE TPS METRICS</li>
-                </ul>
-            </div>
-            <div class="metric-card">
-                <h3>:: GLOBAL METRICS</h3>
-                <ul>
-                    <li>MAXIMUM NETWORK TPS</li>
-                    <li>DEVICE SCALING FACTORS</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="header">
-                <h2>[2] SYSTEM SPECIFICATIONS</h2>
-            </div>
-            <div class="metric-card">
-                <h3>:: DEVICE SPECS</h3>
-                <ul>
-                    <li><span class="highlight">S23 ULTRA:</span> SNAPDRAGON 8/16GB</li>
-                    <li><span class="highlight">iPHONE 15 PRO:</span> A17/8GB</li>
-                </ul>
-            </div>
-            <div class="metric-card">
-                <h3>:: PLONKY2 STATS</h3>
-                <ul>
-                    <li>PROOF GEN: 50ms</li>
-                    <li>VERIFICATION: 2ms</li>
-                </ul>
-            </div>
-            <div class="metric-card">
-                <h3>:: MERKLE TREE OPS</h3>
-                <ul>
-                    <li>UPDATE TIME: 5ms/1M NODES</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="header">
-                <h2>[3] CALCULATIONS</h2>
-            </div>
-            <div class="metric-card">
-                <h3>:: PER-CHANNEL METRICS</h3>
-                <ul>
-                    <li>PROOF GEN: 50ms</li>
-                    <li>PROPAGATION: 5ms</li>
-                    <li>VERIFICATION: 2ms</li>
-                </ul>
-                <div class="calculation">
-                    >TOTAL TIME: 50ms + 5ms + 2ms = 57ms
-                    >CHANNEL TPS: 1/0.057 ≈ 17.5 TPS
-                </div>
-            </div>
-            <div class="metric-card">
-                <h3>:: WALLET METRICS</h3>
-                <ul>
-                    <li>CHANNELS: 1,000</li>
-                </ul>
-                <div class="calculation">
-                    >WALLET TPS: 17.5 * 1,000 = 17,500 TPS
-                </div>
-            </div>
-            <div class="metric-card">
-                <h3>:: CONTRACT METRICS</h3>
-                <ul>
-                    <li>WALLETS/CONTRACT: 10,000</li>
-                </ul>
-                <div class="calculation">
-                    >CONTRACT TPS: 17,500 * 10,000 = 175M TPS
-                </div>
-            </div>
-            <div class="metric-card">
-                <h3>:: GLOBAL METRICS</h3>
-                <ul>
-                    <li>CONTRACTS: 1,000</li>
-                </ul>
-                <div class="calculation">
-                    >NETWORK TPS: 175M * 1,000 = 175B TPS
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="status-bar">
-        STATUS: OPERATIONAL | CASH BARDO OVP-01 | FIRMWARE V1.0
-    </div>
-</body>
+  </head>
+  <body class="bg-military-brown font-vt323 w-full h-screen m-0 p-0">
+    <div id="root" class="w-full h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
