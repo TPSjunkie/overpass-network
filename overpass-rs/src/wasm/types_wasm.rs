@@ -6,12 +6,15 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct WasmCell {
-    pub cell_type: WasmCellType,
-    pub data: Vec<u8>,
+    cell_type: WasmCellType,
+    data: Vec<u8>,
+    hash: [u8; 32],
+    depth: u8,
+    is_pruned: bool,
 }
 
 #[wasm_bindgen]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum WasmCellType {
     Ordinary = 0,
     PrunedBranch = 1,
@@ -30,5 +33,37 @@ impl WasmCellType {
             4 => WasmCellType::MerkleUpdate,
             _ => WasmCellType::Ordinary, // Default case
         }
+    }
+}
+
+impl WasmCell {
+    pub fn new(cell_type: WasmCellType, data: Vec<u8>, hash: [u8; 32], depth: u8, is_pruned: bool) -> Self {
+        Self {
+            cell_type,
+            data,
+            hash,
+            depth,
+            is_pruned,
+        }
+    }
+
+    pub fn get_cell_type(&self) -> WasmCellType {
+        self.cell_type
+    }
+
+    pub fn get_data(&self) -> &Vec<u8> {
+        &self.data
+    }
+
+    pub fn get_hash(&self) -> &[u8; 32] {
+        &self.hash
+    }
+
+    pub fn get_depth(&self) -> u8 {
+        self.depth
+    }
+
+    pub fn is_pruned(&self) -> bool {
+        self.is_pruned
     }
 }
