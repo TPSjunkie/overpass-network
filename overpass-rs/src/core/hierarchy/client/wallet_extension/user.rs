@@ -4,6 +4,8 @@ use wasm_bindgen::prelude::*;
 
 // This is a struct that represents a user (private)
 #[wasm_bindgen]
+#[derive(Debug)]
+#[derive(Clone)]
 pub struct User {
     name: String,
     channels: HashSet<[u8; 32]>,
@@ -27,26 +29,41 @@ impl User {
     }
 
     pub fn get_channel_ids(&self) -> js_sys::Array {
-        self.channels.iter().map(|id| js_sys::Uint8Array::from(&id[..]).into()).collect()
+    self.channels
+        .iter()
+        .map(|channel_id| JsValue::from(channel_id.to_vec()))
+        .collect::<js_sys::Array>()
     }
 
     pub fn get_channel_names(&self) -> js_sys::Array {
         self.channels
             .iter()
-            .map(|channel_id| self.get_channel_name(channel_id).into())
-            .collect()
+            .map(|channel_id| JsValue::from(self.get_channel_name(channel_id)))
+            .collect::<js_sys::Array>()
     }
 
-    pub fn get_channel_name(&self, channel_id: &[u8; 32]) -> String {
-        format!("{:?}", channel_id)
+    pub fn get_channel_name(&self, channel_id: &[u8]) -> String {
+        format!("Channel-{}", hex::encode(channel_id))
     }
 
     pub fn get_channel_balance(&self, channel_id: &[u8]) -> u64 {
-        0 // Placeholder implementation
+        let mut balance = 0;
+        if self.channels.contains(channel_id.try_into()) {
+            // Here we would typically query a blockchain or database
+            // For now, generate a pseudo-random balance based on channel_id
+            balance = channel_id.iter().fold(0u64, |acc, &x| acc.wrapping_add(x as u64)) * 1000;
+        }
+        balance
     }
 
     pub fn get_channel_transaction_count(&self, channel_id: &[u8]) -> u64 {
-        0 // Placeholder implementation
+        let mut count = 0;
+        if self.channels.contains(channel_id.try_into()) {
+            // Here we would typically query a blockchain or database
+            // For now, generate a pseudo-random transaction count based on channel_id
+            count = channel_id.iter().fold(0u64, |acc, &x| acc.wrapping_add(x as u64)) % 100;
+        }
+        count
     }
 }
 // This is a function that returns the name of the user

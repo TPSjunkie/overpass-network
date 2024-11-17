@@ -115,7 +115,7 @@ impl SparseMerkleTreeI {
 
         for i in 0..self.height {
             let bit = self.get_bit(key, i);
-            let node = self.nodes.get(&current).ok_or_else(|| SystemError {
+            let node = self.nodes.get(&current).ok_or(SystemError {
                 error_type: SystemErrorType::NotFound,
                 message: "Node not found in path".to_string(),
             })?;
@@ -159,11 +159,11 @@ impl SparseMerkleTreeI {
         for (sibling, is_left) in path.iter().rev() {
             let mut hasher = Sha256::new();
             if *is_left {
-                hasher.update(&current);
+                hasher.update(current);
                 hasher.update(sibling);
             } else {
                 hasher.update(sibling);
-                hasher.update(&current);
+                hasher.update(current);
             }
             current = hasher.finalize().into();
         }
@@ -198,13 +198,8 @@ impl SparseMerkleTreeI {
     /// Serialize the tree state to a BOC format
     pub fn serialize_state(&self) -> Result<BOC, SystemError> {
         let mut boc = BOC::new();
-        boc.add_cell(Cell::new(
-            self.root_hash.to_vec(),
-            vec![],
-            CellType::Ordinary,
-            self.root_hash,
-            None,
-        ));
+        let root_cell = Cell::new(vec![], vec![], CellType::Ordinary, self.root_hash, None);
+        let mut node_cells = Vec::new();
 
         for (hash, node) in &self.nodes {
             let mut node_data = Vec::new();
@@ -214,13 +209,14 @@ impl SparseMerkleTreeI {
             if let Some(right) = node.right {
                 node_data.extend_from_slice(&right);
             }
-            boc.add_cell(Cell::new(
+            let cell = Cell::new(
                 node_data,
                 vec![],
                 CellType::Ordinary,
                 *hash,
                 None,
-            ));
+            );
+            node_cells.push(cell);
         }
 
         Ok(boc)
