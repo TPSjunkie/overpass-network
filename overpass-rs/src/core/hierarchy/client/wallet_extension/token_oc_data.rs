@@ -41,8 +41,11 @@ impl Default for TokenOCData {
                 nonce: 0,
                 wallet_id: [0u8; 32],
                 proof_type: ProofType::WalletRoot,
+                channel_id: Some([0u8; 32]),
+                state_root: Some([0u8; 32]),
+                state_proof: None,
             },
-            user: User::new(String::new(), std::collections::HashSet::new()),
+            user: User::new(String::new(), Vec::new()),
         }
     }
 }
