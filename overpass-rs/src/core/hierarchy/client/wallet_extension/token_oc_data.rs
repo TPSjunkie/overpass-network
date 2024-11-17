@@ -45,7 +45,7 @@ impl Default for TokenOCData {
                 state_root: Some([0u8; 32]),
                 state_proof: None,
             },
-            user: User::new(String::new(), Vec::new()),
+            user: User::new(String::new()),
         }
     }
 }

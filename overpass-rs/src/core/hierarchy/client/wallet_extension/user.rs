@@ -1,85 +1,65 @@
 use crate::core::hierarchy::client::wallet_extension::client_proof_exporter::WalletRootProof;
-use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
+use serde::{Serialize, Deserialize};
 
 use crate::core::types::boc::BOC;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
-pub enum UserEnumVariant {
-    UserData(UserData),
+pub enum UserData {
+    User(User),
     UserBoc(BOC),
     UserProof(WalletRootProof),
 }
 
-#[derive(Clone, Debug)]
-pub struct UserData {
-    pub name: String,
-    pub channels: HashSet<[u8; 32]>,
-}
-
-impl Default for UserData {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            channels: HashSet::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelState {
-    pub balance: u64,
-    pub transaction_count: u64,
-}
-
-impl Default for ChannelState {
-    fn default() -> Self {
-        Self {
-            balance: 0,
-            transaction_count: 0,
-        }
-    }
-}
-
-#[wasm_bindgen]
-#[derive(Debug, Clone)]
+#[wasm_bindgen(js_name = "User")]
+#[derive(Debug, Clone, Serialize, Deserialize)]     
 pub struct User {
     name: String,
     channels: Vec<[u8; 32]>,
 }
 
+impl User {
+    pub fn new_with_channels(name: String, channels: Vec<[u8; 32]>) -> Self {
+        Self { name, channels }
+    }
+}   
 
+impl Default for User {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            channels: Vec::new(),
+        }
+    }
+}
 
 #[wasm_bindgen]
-impl UserData { 
+impl User {
     #[wasm_bindgen(constructor)]
     pub fn new(name: String) -> Self {
         Self { 
             name,
-            channels: HashSet::new() 
+            channels: Vec::new()
         }
     }
-}
-#[wasm_bindgen]
-impl User { 
-    #[wasm_bindgen(constructor)]
-    pub fn new(name: String, channels: Vec<[u8; 32]>) -> Self {
-        Self { 
-            name,
-            channels 
+
+    #[wasm_bindgen]
+    pub fn add_channel(&mut self, channel: js_sys::Uint8Array) {
+        if channel.length() == 32 {
+            let mut array = [0u8; 32];
+            channel.copy_to(&mut array);
+            self.channels.push(array);
         }
     }
-}
-#[wasm_bindgen]
-impl UserBoc {  
-    #[wasm_bindgen(constructor)]
-    pub fn new(name: String) -> Self {
+
+    #[wasm_bindgen]
+    pub fn new_empty(name: String) -> Self {
         Self { 
             name,
             channels: Vec::new() 
         }
     }
+
     #[wasm_bindgen(getter)]
     pub fn name(&self) -> String {
         self.name.clone()
@@ -141,7 +121,6 @@ impl UserBoc {
         }
     }
 
-    #[wasm_bindgen]
     pub fn query_blockchain_state(&self, channel_id: &[u8]) -> ChannelState {
         // Generate deterministic pseudo-random state based on channel_id
         let mut channel_state = ChannelState::default();
@@ -157,10 +136,8 @@ impl UserBoc {
         channel_state
     }
 
-    #[wasm_bindgen]
-    pub fn get_channel_state(&self, channel_id: &[u8]) -> JsValue {
-        let channel_state = self.query_blockchain_state(channel_id);
-        serde_wasm_bindgen::to_value(&channel_state).unwrap_or(JsValue::NULL)
+    pub fn get_channel_state(&self, channel_id: &[u8]) -> ChannelState {
+        self.query_blockchain_state(channel_id)
     }
 
     pub fn get_channel_state_string(&self, channel_id: &[u8]) -> String {
@@ -177,4 +154,10 @@ impl UserBoc {
         let channel_state = self.query_blockchain_state(channel_id);
         serde_json::to_string_pretty(&channel_state).unwrap_or_else(|_| "{}".to_string())
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChannelState {
+    pub balance: u64,
+    pub transaction_count: u64,
 }
