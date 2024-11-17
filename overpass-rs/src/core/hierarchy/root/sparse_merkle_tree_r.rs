@@ -1,3 +1,5 @@
+// ./src/core/hierarchy/root/sparse_merkle_tree_r.rs
+
 use sha2::Digest;
 use frame_support::Serialize;
 use crate::core::error::errors::{SystemError, SystemErrorType};
