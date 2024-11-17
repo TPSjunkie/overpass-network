@@ -80,61 +80,12 @@ impl RootContract {
         &self,
         tx: Transaction,
         _proof: MerkleProof<GoldilocksField, PoseidonHash>,
-    ) -> Result<bool, SystemError> {
-        let _intermediate_root = self
-            .intermediate_roots
-            .get(&tx.recipient)
-            .ok_or(SystemError {
-                error_type: SystemErrorType::NotFound,
-                message: "Unknown contract".to_string(),
-            })?;
-
+    ) -> Result<bool, String> {
+        if !self.verify_transaction_state {
+            return Ok(false);
+        }   
         Ok(true)
     }
-
-    pub fn serialize(&self) -> Result<BOC, SystemError> {
-        let mut boc = BOC::new();
-
-        let mut state_data = Vec::new();
-        state_data.extend_from_slice(&self.epoch.to_le_bytes());
-        state_data.extend_from_slice(&self.epoch_duration.to_le_bytes());
-        state_data.extend_from_slice(&self.last_submission.to_le_bytes());
-        state_data.push(self.verify_settlement_state as u8);
-        state_data.push(self.submit_settlement as u8);
-
-        boc.add_cell(Cell::new(
-            state_data,
-            vec![],
-            CellType::Ordinary,
-            [0u8; 32],
-            None,
-        ));
-
-        let _tree_boc = self.global_tree.serialize_global_state()?;
-        boc.add_cell(Cell::new(
-            vec![],
-            vec![],
-            CellType::Ordinary,
-            [0u8; 32],
-            None,
-        ));
-
-        for (addr, root) in &self.intermediate_roots {
-            let mut root_data = Vec::new();
-            root_data.extend_from_slice(addr);
-            root_data.extend_from_slice(root);
-            boc.add_cell(Cell::new(
-                root_data,
-                vec![],
-                CellType::Ordinary,
-                [0u8; 32],
-                None,
-            ));
-        }
-
-        Ok(boc)
-    }
-
     pub fn deserialize(boc: BOC) -> Result<Self, SystemError> {
         let root_cell = boc.get_root_cell().ok_or(SystemError {
             error_type: SystemErrorType::NotFound,
@@ -142,7 +93,7 @@ impl RootContract {
         })?;
 
         let state_data = root_cell.get_data();
-        if state_data.len() < 25 {
+        if state_data.len() < 26 {
             return Err(SystemError {
                 error_type: SystemErrorType::NotFound,
                 message: "Invalid state data length".to_string(),
@@ -166,8 +117,6 @@ impl RootContract {
 
         let global_tree = SparseMerkleTreeR::new();
 
-        let global_tree = SparseMerkleTreeR::new();
-
         let intermediate_roots = HashMap::new();
 
         Ok(Self {
@@ -185,6 +134,16 @@ impl RootContract {
             verify_root_state: false,
             submit_settlement,
         })
+    }
+
+    fn to_state_data(&self) -> Vec<u8> {
+        let mut state_data = Vec::new();
+        state_data.extend_from_slice(&self.epoch.to_le_bytes());
+        state_data.extend_from_slice(&self.epoch_duration.to_le_bytes());
+        state_data.extend_from_slice(&self.last_submission.to_le_bytes());
+        state_data.push(self.verify_settlement_state as u8);
+        state_data.push(self.submit_settlement as u8);
+        state_data
     }
 }
 

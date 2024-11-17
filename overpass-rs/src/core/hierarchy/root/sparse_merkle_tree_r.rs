@@ -1,3 +1,5 @@
+use sha2::Digest;
+use frame_support::Serialize;
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
 use crate::core::types::boc::{Cell, CellType, BOC};
@@ -6,7 +8,7 @@ use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::types::Field;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use std::collections::HashMap;
 
 /// Root Tree Trait
@@ -134,28 +136,28 @@ impl SparseMerkleTreeR {
 
     /// Hash a leaf node
     fn hash_global_leaf(&self, key: &[u8], value: &[u8]) -> [u8; 32] {
-        let mut hasher = Sha256::new();
+        let mut hasher = sha2::Sha256::new();
         hasher.update(key);
         hasher.update(value);
         hasher.finalize().into()
     }
-
     /// Calculate the new root hash after updating a leaf
     fn calculate_new_global_root(
         &self,
         path: &[([u8; 32], bool)],
         leaf_hash: &[u8; 32],
     ) -> Result<[u8; 32], SystemError> {
+        use sha2::Digest;
         let mut current = *leaf_hash;
 
         for (sibling, is_left) in path.iter().rev() {
-            let mut hasher = Sha256::new();
+            let mut hasher = sha2::Sha256::new();
             if *is_left {
-                hasher.update(&current);
+                hasher.update(current);
                 hasher.update(sibling);
             } else {
                 hasher.update(sibling);
-                hasher.update(&current);
+                hasher.update(current);
             }
             current = hasher.finalize().into();
         }
@@ -188,33 +190,30 @@ impl SparseMerkleTreeR {
     }
 
     /// Serialize the tree state to a BOC format
-    pub fn serialize_global_state(&self) -> Result<BOC, SystemError> {
-        let mut boc = BOC::new();
-        boc.add_cell(Cell::new(
-            self.root_hash.to_vec(),
-            vec![],
-            CellType::Ordinary,
-            self.root_hash,
-            None,
-        ));
-
+    pub fn serialize_to_boc(&self) -> Result<BOC, SystemError> {
+        let root_cell = Cell::new(vec![], vec![], CellType::Ordinary, self.root_hash, None);
+        let mut node_cells = Vec::new();
+            
         for (hash, node) in &self.nodes {
-            let mut node_data = Vec::new();
+            let mut node_refs = Vec::new();
             if let Some(left) = node.left {
-                node_data.extend_from_slice(&left);
+                node_refs.push(self.hash_to_index(&left)?);
             }
             if let Some(right) = node.right {
-                node_data.extend_from_slice(&right);
+                node_refs.push(self.hash_to_index(&right)?);
             }
-            boc.add_cell(Cell::new(
-                node_data,
-                vec![],
-                CellType::Ordinary,
-                *hash,
-                None,
-            ));
-        }
+            node_cells.push(Cell::new(vec![], node_refs, CellType::Ordinary, *hash, None));
+        }        
+        Ok(BOC::new())
+    }
 
-        Ok(boc)
+    fn hash_to_index(&self, hash: &[u8; 32]) -> Result<usize, SystemError> {
+        self.nodes
+            .iter()
+            .position(|(node_hash, _)| node_hash == hash)
+            .ok_or_else(|| SystemError {
+                error_type: SystemErrorType::NotFound,
+                message: "Node not found in tree".to_string(),
+            })
     }
 }
