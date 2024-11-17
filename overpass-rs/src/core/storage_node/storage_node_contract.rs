@@ -59,7 +59,7 @@ impl StorageNode {
     ) -> Result<Self, SystemError> {
         if initial_stake < 1000 {
             return Err(SystemError {
-                error_type: SystemErrorType::InvalidInput,
+                error_type: SystemErrorType::InvalidAmount,
                 message: "Insufficient initial stake".to_string(),
             });
         }
@@ -76,7 +76,6 @@ impl StorageNode {
             peers: Arc::new(Mutex::new(peers)),
         })
     }
-
     pub async fn store_update(&self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
         let mut battery_system = self.battery_system.lock().await;
         battery_system
