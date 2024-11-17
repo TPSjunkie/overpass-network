@@ -12,6 +12,9 @@ pub enum ProofType {
     StateTransition = 0,
     BalanceTransfer = 1,
     MerkleInclusion = 2,
+    WalletRoot = 3,
+    ChannelStateTransition = 4,
+    ChannelStateTransitionProof = 5,
 }
 /// Data structure representing a wallet root and its associated proof.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,6 +22,10 @@ pub struct WalletRootProof {
     pub wallet_root: [u8; 32],
     pub proof: ZkProof,
     pub metadata: ProofMetadata,
+    pub proof_type: ProofType,
+    pub channel_id: Option<[u8; 32]>,
+    pub state_root: Option<[u8; 32]>,
+    pub state_proof: Option<ZkProof>,   
 }
 impl WalletRootProof {
     /// Exports the wallet root and its associated proof in a BOC (Bag of Cells) format for submission to the intermediate layer.
@@ -46,6 +53,9 @@ pub struct ProofMetadata {
     pub nonce: u64,
     pub wallet_id: [u8; 32],
     pub proof_type: ProofType,
+    pub channel_id: Option<[u8; 32]>,   
+    pub state_root: Option<[u8; 32]>,
+    pub state_proof: Option<ZkProof>,
 }
 
 impl WalletRootProof {
@@ -54,6 +64,10 @@ impl WalletRootProof {
         Self {
             wallet_root,
             proof,
+            proof_type: metadata.proof_type.clone(),
+            channel_id: metadata.channel_id,
+            state_root: metadata.state_root,
+            state_proof: metadata.state_proof.clone(),
             metadata,
         }
     }

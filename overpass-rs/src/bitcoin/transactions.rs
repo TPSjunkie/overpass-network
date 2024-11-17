@@ -232,3 +232,4 @@ mod tests {
         RpcClient::new(rpc_url, auth).expect("Failed to create RPC client")
     }
 }
+

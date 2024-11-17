@@ -5,8 +5,15 @@ use crate::core::hierarchy::client::wallet_extension::user::User;
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
 use sha2::{Digest, Sha256};
+use crate::core::hierarchy::client::wallet_extension::client_proof_exporter::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TokenOC {
+    TokenOCData(TokenOCData),
+    TokenOCBoc(BOC),
+    TokenOCProof(WalletRootProof),
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(bound = "User: Clone")]
 pub struct TokenOCData {
     pub wallet_root: [u8; 32],
@@ -16,24 +23,29 @@ pub struct TokenOCData {
     pub user: User,
 }
 
+impl<'de> Deserialize<'de> for TokenOCData {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        todo!()
+    }
+}
+
 impl Default for TokenOCData {
     fn default() -> Self {
         Self {
             wallet_root: [0u8; 32],
             proof: ZkProof::default(),
-            metadata: ProofMetadata::default(),
-            // TODO: This should be a real user
-            // For now, we'll just use a dummy user
-            // Later, we'll need to fetch the user from the blockchain or database
-            // and populate the user field with the actual user data
-            // This will require some changes to the intermediate layer
-            // to handle the user data  
-            //   - The intermediate layer will need to store the user data
+            metadata: ProofMetadata {
+                timestamp: 0,
+                nonce: 0,
+                wallet_id: [0u8; 32],
+                proof_type: ProofType::WalletRoot,
+            },
             user: User::new(String::new(), std::collections::HashSet::new()),
         }
     }
 }
-
 impl TokenOCData {
     pub fn new(wallet_root: [u8; 32], proof: ZkProof, metadata: ProofMetadata, user: User) -> Self {
         Self {
