@@ -7,6 +7,7 @@ use crate::core::zkps::plonky2::Plonky2SystemHandle;
 use crate::core::zkps::proof::ZkProof;
 
 use ed25519_dalek::Signature;
+use plonky2::util::serialization::generator_serialization::default;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
@@ -60,6 +61,7 @@ pub struct PrivateChannelState {
     pub merkle_root: [u8; 32],
 }
 
+// instead of creating new definitions here.
 #[derive(Clone, Default, Debug)]
 pub struct RebalanceConfig {
     pub min_balance: u64,
@@ -120,10 +122,34 @@ pub struct Transaction {
     pub fee: u64,
 }
 
+impl Default for Transaction {
+    fn default() -> Self {
+        Self {
+            id: [0u8; 32],
+            channel_id: [0u8; 32],
+            sender: [0u8; 32],
+            recipient: [0u8; 32],
+            amount: 0,
+            nonce: 0,
+            sequence_number: 0,
+            timestamp: 0,
+            status: TransactionStatus::Pending,
+            signature: Signature::from_slice(&[0u8; 64]).expect("Invalid signature"),
+            zk_proof: Vec::new(),
+            merkle_proof: Vec::new(),
+            previous_state: Vec::new(),
+            new_state: Vec::new(),
+            fee: 0,
+        }
+    }}
+
+#[derive(Debug, Clone)]
 pub enum TransactionStatus {
     Pending,
     Confirmed,
     Failed,
+    Rejected,
+    Processing,
 }
 
 #[derive(Debug, Clone)]
@@ -141,11 +167,11 @@ pub struct ChannelClosureRequest {
 
 impl Default for ChannelClosureRequest {
     fn default() -> Self {
-        ChannelClosureRequest {
+        Self {
             channel_id: [0; 32],
             final_balance: 0,
             boc: Vec::new(),
-            proof: ZkProof::new(Vec::new(), Vec::new(), Vec::new(), 0),
+            proof: ZkProof::default(),
             signature: Vec::new(),
             timestamp: 0,
             merkle_proof: Vec::new(),
@@ -155,13 +181,29 @@ impl Default for ChannelClosureRequest {
     }
 }
 
+impl Default for WalletExtension {
+    fn default() -> Self {
+        Self {
+            wallet_id: [0; 32],
+            channels: HashMap::new(),
+            total_locked_balance: 0,
+            rebalance_config: RebalanceConfig::default(),
+            proof_system: Arc::new(Plonky2SystemHandle::default()),
+            state_tree: Arc::new(RwLock::new(SparseMerkleTreeWasm::default())),
+            root_hash: [0; 32],
+            balance: 0,
+            encrypted_states: HashMap::new(),
+        }
+    }
+}
+
 pub struct WalletExtension {
     pub wallet_id: [u8; 32],
     pub channels: HashMap<[u8; 32], Arc<RwLock<ChannelContract>>>,
     pub total_locked_balance: u64,
     pub rebalance_config: RebalanceConfig,
-    pub proof_system: Arc<PlonkySystemHandleWrapper>,
-    pub state_tree: Arc<SparseMerkleTreeWasm>,
+    pub proof_system: Arc<Plonky2SystemHandle>,
+    pub state_tree: Arc<RwLock<SparseMerkleTreeWasm>>,
     pub root_hash: [u8; 32],
     pub balance: u64,
     pub encrypted_states: HashMap<[u8; 32], Vec<u8>>,
@@ -174,7 +216,7 @@ impl fmt::Debug for WalletExtension {
             .field("channels", &"<channels>")
             .field("total_locked_balance", &self.total_locked_balance)
             .field("rebalance_config", &self.rebalance_config)
-            .field("proof_system", &self.proof_system)
+            .field("proof_system", &"<proof_system>")
             .field("state_tree", &"<state_tree>")
             .field("root_hash", &self.root_hash)
             .field("balance", &self.balance)
@@ -199,6 +241,15 @@ pub struct WalletExtensionStateChange {
     pub previous_state: Vec<u8>,
     pub new_state: Vec<u8>,
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct WalletExtensionConfig {
+    pub channel_config: ChannelConfig,
+    pub spending_limit: u64,
+}   
+
+
+
 
 pub struct Channel {
     pub channel_id: [u8; 32],
@@ -248,3 +299,4 @@ impl Default for StateTransition {
         }
     }
 }
+

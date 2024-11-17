@@ -9,7 +9,7 @@ use plonky2::{
         circuit_data::{CircuitConfig, CircuitData},
         config::PoseidonGoldilocksConfig,
         proof::ProofWithPublicInputs,
-    },
+    }, util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer},
 };
 use plonky2_field::types::Field;
 use std::rc::Rc;
@@ -28,6 +28,15 @@ pub struct Plonky2System {
 
 #[wasm_bindgen]
 pub struct Plonky2SystemHandle(Rc<Plonky2System>);
+
+impl Default for Plonky2SystemHandle {
+    fn default() -> Self {
+        Self(Rc::new(Plonky2System {
+            circuit_config: CircuitConfig::standard_recursion_config(),
+            state_transition_circuit: StateTransitionCircuitData::default(),
+        }))
+    }
+}
 
 #[wasm_bindgen]
 impl Plonky2SystemHandle {
@@ -114,16 +123,28 @@ impl Plonky2System {
             .map_err(|e| PlonkyError::InvalidInput(e.to_string()))
     }
 }
-
-struct StateTransitionCircuitData {
-    circuit_data: CircuitData<F, C, D>,
-    old_balance_target: Target,
-    old_nonce_target: Target,
-    new_balance_target: Target,
-    new_nonce_target: Target,
-    transfer_amount_target: Target,
+// Remove the Default derive macro as it conflicts with the manual implementation
+pub struct StateTransitionCircuitData {
+    pub circuit_data: CircuitData<F, C, D>,
+    pub old_balance_target: Target,
+    pub old_nonce_target: Target,
+    pub new_balance_target: Target,
+    pub new_nonce_target: Target,
+    pub transfer_amount_target: Target,
 }
 
+impl Default for StateTransitionCircuitData {
+    fn default() -> Self {
+        Self {
+            circuit_data: CircuitData::from_bytes(&[], &DefaultGateSerializer, &DefaultGeneratorSerializer::<C, D>::default()).expect("Failed to create default CircuitData"),
+            old_balance_target: Target::default(),
+            old_nonce_target: Target::default(),
+            new_balance_target: Target::default(),
+            new_nonce_target: Target::default(),
+            transfer_amount_target: Target::default(),
+        }
+    }
+}
 fn build_state_transition_circuit(
     mut builder: CircuitBuilder<F, D>,
 ) -> Result<StateTransitionCircuitData, PlonkyError> {
