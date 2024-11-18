@@ -1,6 +1,8 @@
+use wasm_bindgen::JsValue;
+use web_sys::console;
+use wasm_bindgen_futures::spawn_local;
 use crate::core::error::errors::SystemError;
 use crate::core::storage_node::storage_node_contract::StorageNode;
-use serde::Deserialize;
 use std::sync::Arc;
 
 pub trait Duration {
@@ -8,7 +10,7 @@ pub trait Duration {
 }
 
 pub struct ResponseManager {
-    storage_node: Arc<StorageNode<(), ()>>,
+    storage_node: Arc<StorageNode>,
     response_threshold: u64,
     response_interval: u64,
     is_verifying: bool,
@@ -61,7 +63,7 @@ impl ResponseManagerWrapper {
         response_threshold: u64,
         response_interval: u64,
     ) -> Result<ResponseManagerWrapper, JsValue> {
-        let storage_node: Arc<StorageNode<(), ()>> = serde_wasm_bindgen::from_value(storage_node)?;
+        let storage_node: Arc<StorageNode> = Arc::new(StorageNode::from_js_value(storage_node)?);
         Ok(ResponseManagerWrapper(ResponseManager {
             storage_node,
             response_threshold,
