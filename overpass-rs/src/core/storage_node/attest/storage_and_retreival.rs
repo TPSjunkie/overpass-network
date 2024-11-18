@@ -40,29 +40,26 @@ impl StorageAndRetrievalManager {
     }
 
     // Stores the data in the storage node.
-    pub async fn store_data(&self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
-        if self.store_boc {
+    pub async fn store_data(&mut self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
+        if self.store_boc || self.store_proof {
             self.storage_node
-                .store_data(&boc)
+                .store_update(boc, proof)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))?;
-            self.metrics.store_boc += 1;
-        }
-        if self.store_proof {
-            self.storage_node
-                .store_proof(&proof)
-                .await
-                .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))?;
-            self.metrics.store_proof += 1;
+            
+            if self.store_boc {
+                self.metrics.store_boc += 1;
+            }
+            if self.store_proof {
+                self.metrics.store_proof += 1;
+            }
         }
         Ok(())
-    }
-
-    // Retrieves the data from the storage node.
+    }    // Retrieves the data from the storage node.
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
         if self.retrieve_boc {
             self.storage_node
-                .retrieve_data(boc_id)
+                .retrieve_boc(boc_id)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))
         } else {
