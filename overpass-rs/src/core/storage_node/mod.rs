@@ -1,6 +1,6 @@
 // src/core/storage_node/mod.rs
 
-//pub mod attest;
+pub mod attest;
 pub mod battery;
 //pub mod epidemic;
 //pub mod replication;
