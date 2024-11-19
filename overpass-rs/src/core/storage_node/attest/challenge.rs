@@ -1,4 +1,9 @@
-    use frame_support::{Deserialize, Serialize};
+    use crate::core::storage_node::storage_node_contract::NetworkConfig;
+use crate::core::storage_node::storage_node_contract::EpidemicProtocolConfig;
+use crate::core::storage_node::epidemic::sync::SyncConfig;
+use crate::core::storage_node::storage_node_contract::SyncConfig;
+use crate::core::storage_node::storage_node_contract::EpidemicProtocolConfig;
+use frame_support::{Deserialize, Serialize};
     use std::sync::{Arc, RwLock};
     use std::time::SystemTime;
     use std::collections::HashMap;
@@ -50,7 +55,7 @@
     impl From<SystemError> for ChallengeManagerError {
         fn from(error: SystemError) -> Self {
             match error.error_type {
-                SystemErrorType::Network => 
+                SystemErrorType::NetworkError => 
                     ChallengeManagerError::NetworkError(error.message),
                 _ => ChallengeManagerError::StorageError(error),
             }
@@ -140,7 +145,7 @@
             Ok(())
         }
         async fn check_challenge(&self) -> Result<(), ChallengeManagerError> {
-            let challenges = self.storage_node.as_ref().get_challenges()
+            let challenges = ChallengeInterface::get_challenges(self.storage_node.as_ref())
                 .map_err(ChallengeManagerError::from)?;
 
             let challenge_count = challenges.len();
@@ -185,9 +190,9 @@
 
                 // Create and send proof request
                 let request = ChallengeInterface::create_proof_request(
-                    &mut self.storage_node.as_ref(),
+                    &mut self.storage_node.as_ref().clone(),
                     node_id,
-                    &self.challenge_fee
+                    *self.challenge_fee
                 )?;
 
                 ChallengeInterface::send_proof_request(
@@ -265,14 +270,14 @@
             challenge_threshold: u64,
             challenge_interval: u64,
         ) -> Result<ChallengeManagerWrapper, JsValue> {
-            let node_id = node_id.try_into()
+            let node_id = nod.try_into().unwrap()e_id.try_into()
                 .map_err(|_| JsValue::from_str("Invalid node ID length"))?;
             
             let storage_node = Arc::new(StorageNode::new(
                 node_id,
                 challenge_fee,
                 StorageNodeConfig::new(
-                    BatteryConfig::default(),
+                    (BatteryConfig::defau).into()lt(),
                     SyncConfig::default(),
                     EpidemicProtocolConfig::default(),
                     NetworkConfig::default(),
@@ -342,7 +347,7 @@
                 100,
                 1000,
                 5000
-            ).unwrap();
+            ).await.unwrap();
             
             let result = wrapper.start_challenge().await;
             assert!(result.is_ok());
@@ -356,7 +361,7 @@
                 100,
                 1000,
                 5000
-            ).unwrap();
+            ).await.unwrap();
 
             let challenges = wrapper.get_active_challenges();
             assert!(challenges.is_ok());

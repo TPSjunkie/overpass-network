@@ -43,6 +43,7 @@ impl StorageAndRetrievalManager {
     pub async fn store_data(&mut self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
         if self.store_boc || self.store_proof {
             self.storage_node
+                .as_ref()
                 .store_update(boc, proof)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))?;
@@ -59,6 +60,7 @@ impl StorageAndRetrievalManager {
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
         if self.retrieve_boc {
             self.storage_node
+                .as_ref()
                 .retrieve_boc(boc_id)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))
@@ -74,6 +76,7 @@ impl StorageAndRetrievalManager {
     pub async fn retrieve_proof(&self, proof_id: &[u8; 32]) -> Result<ZkProof, SystemError> {
         if self.retrieve_proof {
             self.storage_node
+                .as_ref()
                 .retrieve_proof(proof_id)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))

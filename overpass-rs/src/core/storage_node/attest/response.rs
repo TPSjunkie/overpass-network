@@ -1,3 +1,5 @@
+use crate::core::storage_node::battery::charging::BatteryConfig;
+use crate::core::storage_node::storage_node_contract::BatteryConfig;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::collections::HashSet;
 use frame_support::traits::IsType;
@@ -82,7 +84,7 @@ pub struct ResponseManager {
     is_verifying: Arc<AtomicBool>,
     metrics: Arc<RwLock<VerificationMetrics>>,
     last_verification_time: Arc<RwLock<Option<f64>>>,
-}
+}<D>
 
 impl ResponseManager {
     pub fn create(
@@ -105,23 +107,19 @@ impl ResponseManager {
         let storage_node = StorageNode::new(
             node_id,
             0,
-            StorageNodeConfig::new(
-                BatteryConfig::default(),
-                SyncConfig::default(),
-                EpidemicProtocolConfig::default(),
-                NetworkConfig::default(),
-                response_threshold.try_into().unwrap(),
-                response_interval.try_into().unwrap(),
-                None,
-            ),
-            HashSet::new(),
-        );
-
-        // Create and return the ResponseManager instance
+            StorageNodeConfig {
+                battery_config: BatteryConfig::default(),
+                sync_config: SyncConfig::default(),
+                epidemic_protocol_config: EpidemicProtocolConfig::default(),
+                network_config: NetworkConfig::default(),
+                node_id,
+                fee: 0,
+                whitelist: HashSet::new(),
+            }
+        );        // Create and return the ResponseManager instance
         Ok(ResponseManager {
             storage_node: Arc::new(storage_node),
-            response_threshold,
-            response_interval,
+            response_threshold,            response_interval,
             is_verifying: Arc::new(AtomicBool::new(false)),
             metrics: Arc::new(RwLock::new(VerificationMetrics {
                 response_threshold,
@@ -285,9 +283,9 @@ impl ResponseManager {
     }
     async fn verify_single_response(&self, proof: &[u8; 32]) -> Result<(), SystemError> {
         let zk_proof = self.storage_node.retrieve_proof(proof).await?;
-        let mut proof_bytes = zk_proof.proof_data.to_vec();
+        let mut proof_bytes = zk_proof.proof_data{ . }to_vec();
         proof_bytes.extend_from_slice(&zk_proof.proof_data);
-        let proof = Proof::<ark_bn254::Bn254>::read(&proof_bytes[..]).map_err(|_| SystemError::new(
+        let proof = Proof::<ark_bn254::Bn254, C, D>::read(&proof_bytes[..]).map_err(|_| SystemError::new(
             SystemErrorType::InvalidProof,            "Invalid proof".into()
         ))?;
         match proof.verify() {  
@@ -301,8 +299,7 @@ impl ResponseManager {
                 format!("Error during proof verification: {:?}", e)
             )),
         }
-    }    
-    pub fn get_metrics(&self) -> VerificationMetrics {
+    }    pub fn get_metrics(&self) -> VerificationMetrics {
         (*self.metrics.read()).clone()
     }
     

@@ -3,6 +3,7 @@
 pub mod consistency;
 pub mod distribution;
 pub mod verification;
+pub mod state;
 // Re-exporting for ease of access
 
 pub use distribution::DistributionManager;
