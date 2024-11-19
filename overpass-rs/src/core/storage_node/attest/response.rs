@@ -1,19 +1,16 @@
-use crate::core::storage_node::battery::charging::BatteryConfig;
-use crate::core::storage_node::storage_node_contract::BatteryConfig;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use crate::core::storage_node::storage_node_contract;
+use std::{collections::HashMap, sync::{atomic::{AtomicBool, Ordering}, Arc}};
 use std::collections::HashSet;
-use frame_support::traits::IsType;
 use plonky2::plonk::proof::Proof;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
+use serde::{Serialize, Deserialize};
 use std::time::Duration as StdDuration;
 use parking_lot::RwLock;
-use serde::{Serialize, Deserialize};
 
 // Core imports
 use crate::core::{error::{SystemError, SystemErrorType}, storage_node::storage_node_contract::EpidemicProtocolConfig};
 use crate::core::storage_node::storage_node_contract::{StorageNode, StorageNodeConfig};
-use crate::core::zkps::proof::ZkProof;
 
 // Constants
 const MAX_VERIFICATION_ATTEMPTS: u32 = 3;
@@ -84,7 +81,7 @@ pub struct ResponseManager {
     is_verifying: Arc<AtomicBool>,
     metrics: Arc<RwLock<VerificationMetrics>>,
     last_verification_time: Arc<RwLock<Option<f64>>>,
-}<D>
+}
 
 impl ResponseManager {
     pub fn create(
@@ -108,18 +105,21 @@ impl ResponseManager {
             node_id,
             0,
             StorageNodeConfig {
-                battery_config: BatteryConfig::default(),
-                sync_config: SyncConfig::default(),
+                battery_config: storage_node_contract::BatteryConfig::default(),
+                sync_config: storage_node_contract::SyncConfig::default(),
                 epidemic_protocol_config: EpidemicProtocolConfig::default(),
-                network_config: NetworkConfig::default(),
+                network_config: crate::core::storage_node::storage_node_contract::NetworkConfig::default(),
                 node_id,
                 fee: 0,
                 whitelist: HashSet::new(),
-            }
-        );        // Create and return the ResponseManager instance
+            },
+            HashMap::new()
+        )?;
+        // Create and return the ResponseManager instance
         Ok(ResponseManager {
             storage_node: Arc::new(storage_node),
-            response_threshold,            response_interval,
+            response_threshold,
+            response_interval,
             is_verifying: Arc::new(AtomicBool::new(false)),
             metrics: Arc::new(RwLock::new(VerificationMetrics {
                 response_threshold,
@@ -129,7 +129,6 @@ impl ResponseManager {
             last_verification_time: Arc::new(RwLock::new(None)),
         })
     }
-
     pub fn start_verification(&self) -> Result<(), ResponseManagerError> {        if self.is_verifying.compare_exchange(
             false,
             true,
@@ -211,7 +210,7 @@ impl ResponseManager {
     }
 
     async fn check_response_verification(&self) -> Result<(), SystemError> {
-        let boc = self.storage_node.retrieve_boc(&[0u8; 32]).await?;
+        let boc = self.storage_node.retrieve_boc(&[0u8; 32]).await.map_err(|e| e.into())?;
 
         if boc.cells.len() > MAX_RESPONSE_SIZE {
             return Err(SystemError::new(
@@ -219,7 +218,7 @@ impl ResponseManager {
                 "Response size exceeds maximum allowed".into()
             ));
         }
-    
+
         let response_count = boc.cells.len();
 
         if response_count >= self.response_threshold as usize {
@@ -236,7 +235,7 @@ impl ResponseManager {
                     }
                 })
                 .collect();
-    
+
             self.verify_responses(responses).await?;
         }
 
@@ -282,11 +281,12 @@ impl ResponseManager {
         Ok(())
     }
     async fn verify_single_response(&self, proof: &[u8; 32]) -> Result<(), SystemError> {
-        let zk_proof = self.storage_node.retrieve_proof(proof).await?;
-        let mut proof_bytes = zk_proof.proof_data{ . }to_vec();
+        let zk_proof = self.storage_node.as_ref().retrieve_proof(proof).await?;
+        let mut proof_bytes = zk_proof.proof_data.to_vec();
         proof_bytes.extend_from_slice(&zk_proof.proof_data);
         let proof = Proof::<ark_bn254::Bn254, C, D>::read(&proof_bytes[..]).map_err(|_| SystemError::new(
-            SystemErrorType::InvalidProof,            "Invalid proof".into()
+            SystemErrorType::InvalidProof,
+            "Invalid proof".into()
         ))?;
         match proof.verify() {  
             Ok(true) => Ok(()),
@@ -299,7 +299,9 @@ impl ResponseManager {
                 format!("Error during proof verification: {:?}", e)
             )),
         }
-    }    pub fn get_metrics(&self) -> VerificationMetrics {
+    }
+
+    pub fn get_metrics(&self) -> VerificationMetrics {
         (*self.metrics.read()).clone()
     }
     

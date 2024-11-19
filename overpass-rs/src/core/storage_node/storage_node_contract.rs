@@ -1,5 +1,7 @@
 // src/core/storage_node/storage_node_contract.rs
 
+use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
+
 /// Storage node Smart Contract. This module contains the main storage node contract
 /// that is responsible for managing the storage node's state and performing various
 /// operations such as storing and retrieving data, as well as verifying the proofs
@@ -27,15 +29,17 @@
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::storage_node::battery::BatteryChargingSystem;
 use crate::core::types::boc::BOC;
+use crate::core::zkps::circuit_builder::Column;
 use crate::core::zkps::proof::ZkProof;
 use crate::core::zkps::zkp::VirtualCell;
 use crate::core::zkps::plonky2::{Plonky2System, Plonky2SystemHandle}; 
-use crate::core::storage_node::replication::consistency::ConsistencyManager;
+use crate::core::storage_node::replication::consistency::ConsistencyValidator;
 use crate::core::storage_node::replication::distribution::DistributionManager;
-use crate::core::storage_node::replication::verification::ResponseManager;
+use crate::core::storage_node::attest::response::ResponseManager;
 use crate::core::types::ovp_ops::*;
 use futures::lock::Mutex;
 use sha2::{Digest, Sha256};
+use wasm_bindgen::JsValue;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use crate::core::zkps::{circuit_builder::ZkCircuitBuilder, zkp_interface::ProofGenerator};
@@ -197,7 +201,7 @@ impl Storage {
         // Store proof in storage layer (e.g., database, cache)
         self.store_proof_in_db(proof)?;
         Ok(())
-    }
+    }_proof
 
     fn store_proof_in_db(&self, proof: JsValue) -> Result<(), String> {
         // Placeholder for DB interaction logic

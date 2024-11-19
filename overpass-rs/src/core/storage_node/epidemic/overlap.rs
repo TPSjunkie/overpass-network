@@ -1,7 +1,8 @@
+use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
-use hashbrown::{HashMap, HashSet};
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 
 use crate::core::error::errors::{SystemError, SystemErrorType};
 
@@ -44,6 +45,8 @@ pub struct NodeOverlap {
     pub sync_success_rate: f64,
 }
 
+
+
 pub struct StorageOverlapManager {
     // Core state tracking
     node_responsibilities: RwLock<HashMap<[u8; 32], HashSet<[u8; 32]>>>, // node -> states
@@ -60,7 +63,6 @@ pub struct StorageOverlapManager {
     min_overlap_threshold: f64,
     target_redundancy: usize,
 }
-
 impl StorageOverlapManager {
     pub fn new(min_overlap_threshold: f64, target_redundancy: usize) -> Self {
         Self {

@@ -143,15 +143,14 @@ impl EpidemicPropagation {
         // Check if we can handle more propagations
         if self.active_messages.read().len() >= self.max_active_propagations {
             return Err(SystemError::new(
-                SystemErrorType::TooManyPropagations,
-                "Maximum active propagations reached"
+                SystemErrorType::ResourceUnavailable,
+                "Maximum active propagations reached".to_owned()
             ));
         }
 
         // Start propagation
         self.start_propagation(message).await
     }
-
     // Start propagating a message
     async fn start_propagation(&self, message: PropagationMessage) -> Result<(), SystemError> {
         // Update message state
@@ -241,8 +240,8 @@ impl EpidemicPropagation {
             Ok(())
         } else {
             Err(SystemError::new(
-                SystemErrorType::PropagationFailed,
-                "Peer propagation failed"
+                SystemErrorType::VerificationError,
+                "Peer propagation failed".to_owned()
             ))
         }
     }
