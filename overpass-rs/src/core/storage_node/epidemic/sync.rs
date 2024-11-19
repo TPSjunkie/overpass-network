@@ -9,19 +9,17 @@ use std::time::Duration;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
-pub struct SynchronizationManager<RootTree, IntermediateTreeManager> {
-    storage_node: Arc<StorageNode<RootTree, IntermediateTreeManager>>,
+pub struct SynchronizationManager {
+    storage_node: Arc<StorageNode>,
     synchronization_boost: AtomicU64,
     synchronization_boost_interval: Duration,
     min_synchronization_boost: u64,
     max_synchronization_boost: u64,
-    _phantom: std::marker::PhantomData<IntermediateTreeManager>,
+    _phantom: std::marker::PhantomData<()>,
 }
-impl<RootTree: 'static, IntermediateTreeManager: 'static>
-    SynchronizationManager<RootTree, IntermediateTreeManager>
-{
+impl SynchronizationManager{
     pub fn new(
-        storage_node: Arc<StorageNode<RootTree, IntermediateTreeManager>>,
+        storage_node: Arc<StorageNode>,
         synchronization_boost_interval: Duration,
         min_synchronization_boost: u64,
         max_synchronization_boost: u64,
