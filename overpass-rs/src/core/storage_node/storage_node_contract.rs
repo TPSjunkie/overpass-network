@@ -2,10 +2,12 @@ use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::storage_node::battery::BatteryChargingSystem;
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
+use crate::core::storage_node::replication::distribution::DistributionManager;
+use crate::core::storage_node::replication::verification::ResponseManager;
+use crate::core::types::ovp_ops::*;
 use futures::lock::Mutex;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::default::Default;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -14,6 +16,9 @@ pub struct StorageNodeConfig {
     pub sync_config: SyncConfig,
     pub epidemic_protocol_config: EpidemicProtocolConfig,
     pub network_config: NetworkConfig,
+    pub(crate) node_id: [u8; 32],
+    pub(crate) fee: i32,
+    pub(crate) whitelist: HashSet<[u8; 32]>,
 }
 
 #[derive(Clone, Default)]
@@ -76,6 +81,7 @@ impl StorageNode {
             peers: Arc::new(Mutex::new(peers)),
         })
     }
+
     pub async fn store_update(&self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
         let mut battery_system = self.battery_system.lock().await;
         battery_system
@@ -142,9 +148,51 @@ impl StorageNode {
         hash
     }
 
-    fn verify_proof_internal(&self, _proof: &ZkProof, _boc: &BOC) -> Result<bool, SystemError> {
-        Ok(true) // TODO: Implement actual verification logic
+    fn verify_proof_internal(&self, proof: &ZkProof, boc: &BOC) -> Result<bool, SystemError> {
+        // Verify the proof matches the BOC
+        let boc_hash = self.hash_boc_internal(boc);
+    
+        // Verify the proof's public inputs contain the BOC hash
+        if proof.public_inputs.len() != 1 || proof.public_inputs[0] != boc_hash.to_vec() {
+            return Ok(false);
+        }
+
+        // Verify the ZK proof cryptographic validity using the verification key
+        // Note: This part is commented out due to missing dependencies
+        /*
+        let verification_key = self.generate_verification_key();
+        let proof_bytes = proof.proof_data.to_vec();
+        let proof = Proof::<Bn254>::read(&proof_bytes[..]).map_err(|_| SystemError::new(
+            SystemErrorType::InvalidProof,
+            "Invalid proof".into()
+        ))?;
+        match Bn254::verify(&verification_key, &[boc_hash], &proof) {
+            Ok(true) => Ok(true),
+            Ok(false) => Ok(false),
+            Err(_) => Err(SystemError::new(
+                SystemErrorType::InvalidProof,
+                "Invalid proof".into()
+            )),
+        }
+        */
+        
+        // Placeholder return value
+        Ok(true)
     }
+
+    // Note: This function is commented out due to missing dependencies
+    /*
+    fn generate_verification_key(&self) -> ark_bn254::Bn254VerificationKey<ark_bn254::Bn254> {
+        let params = ark_bn254::Bn254::new();
+        let vk = ark_bn254::Bn254VerificationKey::<ark_bn254::Bn254>::new(
+            params,
+            self.node_id,
+            self.config.fee,
+            self.config.whitelist.clone(),
+        );
+        vk
+    }
+    */
 }
 
 impl StorageNodeConfig {
@@ -153,12 +201,18 @@ impl StorageNodeConfig {
         sync_config: SyncConfig,
         epidemic_config: EpidemicProtocolConfig,
         network_config: NetworkConfig,
+        node_id: [u8; 32],
+        fee: i32,
+        whitelist: HashSet<[u8; 32]>,
     ) -> Self {
         Self {
             battery_config,
             sync_config,
             epidemic_protocol_config: epidemic_config,
             network_config,
+            node_id,
+            fee,
+            whitelist,
         }
     }
 }
