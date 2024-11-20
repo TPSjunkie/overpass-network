@@ -213,14 +213,13 @@ impl EpidemicPropagation {
         peer: &[u8; 32],
     ) -> Result<(), SystemError> {
         self.battery_system.consume_charge(message.battery_requirement).await?;   
-        self.metrics.write().messages_propagated += 1;
-        self.metrics.write().messages_seen += 1;
-        self.metrics.write().messages_failed += 1;
+        self.metrics.write().await.messages_propagated += 1;
+        self.metrics.write().await.messages_seen += 1;
+        self.metrics.write().await.messages_failed += 1;
         let message = PropagationMessage {
             id: message.id,
             priority: message.priority,
             battery_requirement: message.battery_requirement,
-            content: message.content.clone(),
             data_hash: message.data_hash,
             source_node: message.source_node,
             timestamp: message.timestamp,
@@ -235,7 +234,7 @@ impl EpidemicPropagation {
         // Send the message to the peer using the network system
         let network = self.network.read().await;
         network
-            .send_message(peer, message.id, payload)
+            .send_message(peer, &payload)
             .await
             .map_err(|e| {
                 SystemError::new(
