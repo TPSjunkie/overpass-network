@@ -153,13 +153,14 @@ mod tests {
         }
     }
     #[wasm_bindgen_test]
+    #[wasm_bindgen_test]
     async fn test_consistency_validation() {
-        let state_manager = Arc::new(StateMetrics::new());
+        let state_manager = Arc::new(StateMetrics::new().unwrap());
         let proof_manager = Arc::new(MockProofManager::new());
         let validator = ConsistencyValidator::new(state_manager.clone(), proof_manager.clone());
 
         let state = create_test_boc();
-        let state_hash = state_manager.update_wallet_state([1u8; 32], state.clone()).await.unwrap();
+        let state_hash = state_manager.update_wallet_state([1u8; 32], state.clone(), 0).await.unwrap();
         let public_inputs = vec![state_hash.to_vec()];
 
         let proof = proof_manager.generate_proof(&state, &public_inputs).unwrap();
@@ -173,7 +174,6 @@ mod tests {
         let metrics = validator.get_metrics();
         assert_eq!(metrics.total_consistency_checks, 1);
     }
-    #[wasm_bindgen_test]
     async fn test_invalid_consistency() {
         let state_manager = Arc::new(StateMetrics::new().unwrap());
         let proof_manager = Arc::new(MockProofManager::new());
@@ -182,7 +182,7 @@ mod tests {
         let state = create_test_boc();
         let invalid_state = create_test_boc();
 
-        let state_hash = state_manager.update_wallet_state([2u8; 32], state.clone()).await.unwrap();
+        let state_hash = state_manager.update_wallet_state([2u8; 32], state.clone(), 0).await.unwrap();
         let public_inputs = vec![state_hash.to_vec()];
 
         let proof = proof_manager.generate_proof(&state, &public_inputs).unwrap();
@@ -197,7 +197,6 @@ mod tests {
         let metrics = validator.get_metrics();
         assert_eq!(metrics.proof_failures, 1);
     }
-
     #[wasm_bindgen_test]
     async fn test_consistency_report() {
         let state_manager = Arc::new(StateManager::new().unwrap());
@@ -205,7 +204,7 @@ mod tests {
         let validator = ConsistencyValidator::new(state_manager.clone(), proof_manager.clone());
 
         let state = create_test_boc();
-        let state_hash = state_manager.update_wallet_state([3u8; 32], state.clone()).await.unwrap();
+        let state_hash = state_manager.update_root_state(state).unwrap();
         let public_inputs = vec![state_hash.to_vec()];
 
         let proof = proof_manager.generate_proof(&state, &public_inputs).unwrap();
@@ -214,7 +213,6 @@ mod tests {
             .await
             .unwrap();
 
-        let report = validator.generate_consistency_report();
+        let report = validator.generate_consistency_report().await;
         assert!(report.contains("Consistency Validation Report:"));
-    }
-}
+    }}
