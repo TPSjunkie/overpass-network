@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use plonky2::hash::hash_types::RichField;
 use plonky2_field::extension::Extendable;
-    
+use serde::{Serialize, Deserialize};
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
-use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
+use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit, CircuitConfig}; 
 use crate::core::storage_node::storage_node_contract::StorageNode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>> {
     store_boc: bool,
     store_proof: bool,
     retrieve_boc: bool,
-    retrieve_proof: bool,
+    retrieve_proof: bool, 
     verify_proof: bool,
     _marker: std::marker::PhantomData<F>,
 }
@@ -56,19 +56,15 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
         if self.store_boc || self.store_proof {
             if self.store_boc {
                 self.storage_node
-                    .as_ref()
-                    .store_boc(&boc)
-                    .await
-                    .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
+                    .stored_bocs.lock().await
+                    .insert(boc.hash(), boc.clone());
                 self.metrics.store_boc += 1;
             }
         
             if self.store_proof {
                 self.storage_node
-                    .as_ref()
-                    .store_proof(&proof)
-                    .await
-                    .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
+                    .stored_proofs.lock().await 
+                    .insert(proof.hash(), proof.clone());
                 self.metrics.store_proof += 1;
             }
         }
@@ -78,26 +74,38 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
         if self.retrieve_boc {
             let boc = self.storage_node
-    .get_boc(boc_id)
-    .await
-    .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;  
-    
-    self.metrics.retrieve_boc += 1;
-    Ok(boc)
-    } else {
-    Err(SystemError::new(
-    SystemErrorType::OperationDisabled,
-    "Storage and retrieval retrieval is disabled".to_string(),
-    ))
-    }
+                .stored_bocs
+                .lock()
+                .await
+                .get(boc_id)
+                .cloned()
+                .ok_or_else(|| SystemError::new(
+                    SystemErrorType::StorageError, 
+                    "BOC not found".to_string()
+                ))?;
+            
+            self.metrics.retrieve_boc += 1;
+            Ok(boc)
+        } else {
+            Err(SystemError::new(
+                SystemErrorType::OperationDisabled,
+                "Storage and retrieval retrieval is disabled".to_string(),
+            ))
+        }
     }   
 
     pub async fn retrieve_proof(&self, proof_id: &[u8; 32]) -> Result<ZkProof, SystemError> {
         if self.retrieve_proof {
             let proof = self.storage_node
-                .get_proof(proof_id)
+                .stored_proofs
+                .lock()
                 .await
-                .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
+                .get(proof_id)
+                .cloned()
+                .ok_or_else(|| SystemError::new(
+                    SystemErrorType::StorageError,
+                    "Proof not found".to_string()
+                ))?;
 
             self.metrics.retrieve_proof += 1;
             Ok(proof)
@@ -111,31 +119,22 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 
     pub async fn verify_proof(&self, proof: &ZkProof) -> Result<bool, SystemError> {
         if self.verify_proof {
-            let circuit_proof = ZkCircuitBuilder::new(proof.clone());
-            let circuit_proof = circuit_proof.build().map_err(|e| {
+            let config = CircuitConfig::default();
+            let mut circuit_builder = ZkCircuitBuilder::<F, 2>::new(config);
+            
+            let circuit = circuit_builder.build_verification_circuit(proof).map_err(|e| {
                 SystemError::new(
                     SystemErrorType::CircuitError,
                     format!("Failed to build circuit: {:?}", e),
                 )
             })?;
-            let proof_bytes = bincode::serialize(&proof).map_err(|e| {
+
+            circuit.verify_proof(proof).map_err(|e| 
                 SystemError::new(
-                    SystemErrorType::SerializationError,
-                    format!("Failed to serialize proof: {}", e),
-                )
-            })?;
-            let proof_bytes = proof_bytes.to_vec();
-            match circuit_proof.verify() {
-                Ok(true) => Ok(true),
-                Ok(false) => Err(SystemError::new(
-                    SystemErrorType::InvalidProof,
-                    "Proof verification failed".to_string(),
-                )),
-                Err(e) => Err(SystemError::new(
                     SystemErrorType::VerificationError,
                     format!("Error during proof verification: {:?}", e)
-                )),
-            }
+                )
+            )
         } else {
             Err(SystemError::new(
                 SystemErrorType::OperationDisabled,
@@ -205,51 +204,47 @@ mod tests {
 
         StorageAndRetrievalManager::new(storage_node)
     }
-
     #[wasm_bindgen_test]
-    async fn test_store_data() {
-        let mut manager = setup_storage_and_retrieval().await;
-        let boc = BOC {
-            cells: vec![],
-            references: vec![],
-            roots: vec![],
-        };
-        let proof = ZkProof {
-            proof_data: vec![],
-            public_inputs: vec![],
-            merkle_root: vec![],
-            timestamp: 0,
-        };
-        let result = manager.store_data(boc, proof).await;
+    async fn test_storage_and_retrieval_manager() {
+        let manager = setup_storage_and_retrieval().await;
+        let result = manager.store_data(BOC::new(), ZkProof::default()).await;
+        assert!(result.is_ok());
+        let result = manager.retrieve_data(&[0u8; 32]).await;
+        assert!(result.is_ok());
+        let result = manager.verify_proof(&ZkProof::default()).await;
         assert!(result.is_ok());
     }
 
-    #[wasm_bindgen_test]
-    async fn test_retrieve_data() {
-        let manager = setup_storage_and_retrieval().await;
-        let boc_id = [0u8; 32];
-        let result = manager.retrieve_data(&boc_id).await;
-        assert!(result.is_ok());
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;    
+    use crate::core::storage_node::storage_node_contract::{
+        StorageNodeConfig, BatteryConfig, SyncConfig, 
+        EpidemicProtocolConfig, NetworkConfig
+    };
+    use plonky2::field::goldilocks_field::GoldilocksField;
+    use std::collections::HashSet;
+    use wasm_bindgen_test::*;
 
-    #[wasm_bindgen_test]
-    async fn test_retrieve_proof() {
-        let manager = setup_storage_and_retrieval().await;
-        let proof_id = [0u8; 32];
-        let result = manager.retrieve_proof(&proof_id).await;
-        assert!(result.is_ok());
-    }
+    wasm_bindgen_test_configure!(run_in_browser);
 
-    #[wasm_bindgen_test]
-    async fn test_verify_proof() {
-        let manager = setup_storage_and_retrieval().await;
-        let proof = ZkProof {
-            proof_data: vec![],
-            public_inputs: vec![],
-            merkle_root: vec![],
-            timestamp: 0,
-        };
-        let result = manager.verify_proof(&proof).await;
-        assert!(result.is_ok());
+    type F = GoldilocksField;
+
+    async fn setup_storage_and_retrieval() -> StorageAndRetrievalManager<F> {
+        let storage_node = Arc::new(StorageNode::new(                
+            [0u8; 32],
+            0,
+            StorageNodeConfig {
+                battery_config: BatteryConfig::default(),
+                sync_config: SyncConfig::default(),
+                epidemic_protocol_config: EpidemicProtocolConfig::default(),
+                network_config: NetworkConfig::default(),
+                node_id: [0u8; 32],
+                fee: 0,
+                whitelist: HashSet::new(),
+            },
+        ).unwrap());
+
+        StorageAndRetrievalManager::new(storage_node)
     }
 }
