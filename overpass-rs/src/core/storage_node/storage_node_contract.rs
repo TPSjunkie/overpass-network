@@ -1,50 +1,19 @@
-// src/core/storage_node/storage_node_contract.rs
-
 use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
-
-/// Storage node Smart Contract. This module contains the main storage node contract
-/// that is responsible for managing the storage node's state and performing various
-/// operations such as storing and retrieving data, as well as verifying the proofs
-/// provided by the storage nodes. The contract is designed to be used in a WASM
-/// environment, and provides methods for interacting with the storage node's
-/// components, such as the battery, plonky2, consistency, distribution, and Overpass OP code ov_ops, is used to make calls to the contract with the op codes. like these codes:
-/// 
-
-/// Wallet Sparse Merkle Tree Management(WASM)
-/// - This Group of OP codes is for the wallets storage network side,
-///  which is responsible for managing the wallet's Sparse Merkle Tree. 
-/// Transactions finalized instantly though so if you catch the byzantine 
-/// actor at least as long as it's before, the channel is closed, but it's 
-/// always checked on the closure of channel by the smart contract anyways, 
-/// if there has been any suspicious activity, so if they get slashed, you 
-/// can only spend 50% of what's in your balance per transaction so allows 
-/// for a pretty good safeguard that's the most lesson you can continue to 
-/// spend 50% over and over but you can't in one transaction send out more 
-/// than 50% of your balance that's just the rule and then it's fair for everyone 
-/// anyways so that's how it works so these codes are to deal with initiate initiate
-///  initiating the wallet contracts you have to make a call to the intermediate 
-/// notes and they will generate the wallets for the user and those wallet contracts can generate the channels.
-/// All levels of state, intermediate and route included have a redundant group of nodes assigned to them based on intermediate contract level anyways, let's get down to the business here and implement this module
-
-use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::core::error::errors::SystemError;
 use crate::core::storage_node::battery::BatteryChargingSystem;
 use crate::core::types::boc::BOC;
 use crate::core::zkps::circuit_builder::Column;
 use crate::core::zkps::proof::ZkProof;
 use crate::core::zkps::zkp::VirtualCell;
-use crate::core::zkps::plonky2::{Plonky2System, Plonky2SystemHandle}; 
+use crate::core::zkps::plonky2::Plonky2System;
 use crate::core::storage_node::replication::consistency::ConsistencyValidator;
 use crate::core::storage_node::replication::distribution::DistributionManager;
 use crate::core::storage_node::attest::response::ResponseManager;
-use crate::core::types::ovp_ops::*;
+use crate::core::zkps::proof::ProofGenerator;
 use futures::lock::Mutex;
-use sha2::{Digest, Sha256};
-use wasm_bindgen::JsValue;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use crate::core::zkps::{circuit_builder::ZkCircuitBuilder, zkp_interface::ProofGenerator};
 
-/// Configuration for the storage node
 #[derive(Debug, Clone, Default)]
 pub struct StorageNodeConfig {
     pub battery_config: BatteryConfig,
@@ -107,21 +76,17 @@ pub struct NetworkConfig {
     pub peer_count_decrease_interval: u64,
 }
 
-/// Storage node contract
 pub struct StorageNode {
     pub node_id: [u8; 32],
     pub fee: i64,
     pub whitelist: HashSet<[u8; 32]>,
-
     pub battery_system: Arc<Mutex<BatteryChargingSystem>>,
     pub plonky2_system: Arc<Mutex<Plonky2System>>,
-    pub consistency_manager: Arc<Mutex<ConsistencyManager>>,
+    pub consistency_validator: Arc<Mutex<ConsistencyValidator>>,
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub response_manager: Arc<Mutex<ResponseManager>>,
-
     pub stored_bocs: Arc<Mutex<HashMap<[u8; 32], BOC>>>,
     pub stored_proofs: Arc<Mutex<HashMap<[u8; 32], ZkProof>>>,
-
     pub virtual_cells: Arc<Mutex<HashMap<VirtualCell, MerkleNode>>>,
     pub current_virtual_cell: Arc<Mutex<VirtualCell>>,
     pub current_virtual_cell_count: Arc<Mutex<usize>>,
@@ -132,41 +97,41 @@ impl StorageNode {
         node_id: [u8; 32],
         fee: i64,
         config: StorageNodeConfig,
-        stored_bocs: HashMap<[u8; 32], BOC>,
     ) -> Result<Self, SystemError> {
-        let stored_bocs = Arc::new(Mutex::new(stored_bocs));
+        let stored_bocs = Arc::new(Mutex::new(HashMap::new()));
         let stored_proofs = Arc::new(Mutex::new(HashMap::new()));
 
         let plonky2_system = Arc::new(Mutex::new(Plonky2System::new(config.network_config)?));
 
         let battery_system = Arc::new(Mutex::new(BatteryChargingSystem::new(config.battery_config)));
 
-        let consistency_manager = Arc::new(Mutex::new(ConsistencyManager::new(
+        let consistency_validator = Arc::new(Mutex::new(ConsistencyValidator::new(
             Arc::clone(&plonky2_system),
         )));
 
         let distribution_manager = Arc::new(Mutex::new(DistributionManager::new(
-            plonky2_system.lock().unwrap().into(),
-            config.epidemic_protocol_config,
+            config.epidemic_protocol_config.max_propagation_threshold,
+            config.epidemic_protocol_config.max_propagation_interval,
         )));
 
         let response_manager = Arc::new(Mutex::new(ResponseManager::create(
             node_id,
-            config.sync_config,
-            Arc::clone(&plonky2_system),
+            config.sync_config.max_synchronization_boost,
+            config.sync_config.min_synchronization_boost,
+            config.sync_config.synchronization_boost_interval,
         )?));
 
         let virtual_cells = Arc::new(Mutex::new(HashMap::new()));
-        let current_virtual_cell = Arc::new(Mutex::new(VirtualCell::new(Column::default(), 0)));
+        let current_virtual_cell = Arc::new(Mutex::new(VirtualCell::new(0, 0)));
         let current_virtual_cell_count = Arc::new(Mutex::new(0));
 
         Ok(Self {
             node_id,
             fee,
-            whitelist: HashSet::new(),
+            whitelist: config.whitelist,
             battery_system,
             plonky2_system,
-            consistency_manager,
+            consistency_validator,
             distribution_manager,
             response_manager,
             stored_bocs,
@@ -174,9 +139,9 @@ impl StorageNode {
             virtual_cells,
             current_virtual_cell,
             current_virtual_cell_count,
-        })        
-    }}
-
+        })
+    }
+}
 pub struct Storage {
     proof_generator: ProofGenerator,
 }
@@ -198,13 +163,16 @@ impl Storage {
             .generate_state_transition_proof(old_balance, new_balance, amount, None)
             .map_err(|e| format!("Proof generation failed: {}", e))?;
 
-        // Store proof in storage layer (e.g., database, cache)
-        self.store_proof_in_db(proof)?;
-        Ok(())
-    }_proof
+        self.store_proof(proof)
+    }
 
-    fn store_proof_in_db(&self, proof: JsValue) -> Result<(), String> {
-        // Placeholder for DB interaction logic
+    pub fn store_proof(&self, proof: ZkProof) -> Result<(), String> {
+        let mut proofs = self.get_stored_proofs();
+        proofs.insert(proof.hash(), proof);
         Ok(())
+    }
+
+    pub fn get_stored_proofs(&self) -> HashMap<[u8; 32], ZkProof> {
+        HashMap::new()
     }
 }
