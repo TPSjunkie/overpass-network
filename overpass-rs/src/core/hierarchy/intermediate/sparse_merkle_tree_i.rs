@@ -30,6 +30,7 @@ pub struct MerkleNode {
     pub is_leaf: bool,
     pub is_virtual: bool,
     pub is_empty: bool,
+    pub(crate) data: Option<Vec<u8>>,
 }
 
 /// Sparse Merkle Tree Implementation
