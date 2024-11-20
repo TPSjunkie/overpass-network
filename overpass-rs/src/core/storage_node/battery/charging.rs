@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use web_sys::window;
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -86,7 +86,7 @@ impl BatteryChargingSystem {
         
         // Check cooldown period
         if now - last_charge < self.config.charging_cooldown {
-            return Err(SystemErrorType::ChargingCooldown);
+            return Err(SystemErrorType::CooldownPeriod);
         }
 
         let current_level = self.battery_level.load(Ordering::Acquire);
@@ -110,7 +110,7 @@ impl BatteryChargingSystem {
     }
 
     // Battery consumption for operations
-    pub async fn consume_charge(&self, amount: u64) -> Result<(), SystemErrorType> {
+    pub async fn consume_charge(&mut self, amount: u64) -> Result<(), SystemErrorType> {
         if self.is_suspended.load(Ordering::Acquire) {
             return Err(SystemErrorType::NodeSuspended);
         }
@@ -132,12 +132,13 @@ impl BatteryChargingSystem {
     }
 
     // Suspension handling
-    async fn suspend(&self) -> Result<(), SystemErrorType> {
+    async fn suspend(&mut self) -> Result<(), SystemErrorType> {
         self.is_suspended.store(true, Ordering::Release);
         let now = window().unwrap().performance().unwrap().now() as u64;
         self.last_suspension_time = Some(AtomicU64::new(now));
         Ok(())
     }
+
 
     pub async fn check_suspension(&self) -> bool {
         if let Some(last_suspension) = &self.last_suspension_time {
@@ -183,6 +184,7 @@ impl BatteryChargingSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use libc::system;
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);
@@ -190,7 +192,7 @@ mod tests {
     #[wasm_bindgen_test]
     async fn test_charging_system() {
         let config = BatteryConfig::default();
-        let system = BatteryChargingSystem::new(config);
+        let mut system = BatteryChargingSystem::new(config);
         
         // Test initial state
         assert_eq!(system.get_charge_percentage(), 100.0);
@@ -210,12 +212,11 @@ mod tests {
         // Verify charge increased
         assert!(system.get_charge_percentage() > 80.0);
     }
-
     #[wasm_bindgen_test]
     async fn test_suspension() {
         let mut config = BatteryConfig::default();
         config.suspension_threshold = 5;
-        let system = BatteryChargingSystem::new(config);
+        let mut system = BatteryChargingSystem::new(config);
 
         // Consume until suspension
         system.consume_charge(95).await.unwrap();
