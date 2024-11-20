@@ -315,21 +315,18 @@ mod tests {
     }
 
 #[wasm_bindgen_test]
-async fn test_battery_requirements() {
-    let propagation = setup_propagation().await;
-    
-    let battery_system = Arc::clone(&propagation.battery_system);
-    let battery_level = battery_system.charge().await.unwrap();
-    assert!(battery_level < 10.0);
-    
-    let message = create_test_message(MessagePriority::High);
-    let result = propagation.handle_message(message).await;
-    
-    assert!(result.is_err());
-    let metrics = propagation.get_metrics();
-    assert_eq!(metrics.battery_rejections, 1);
-}
-    #[wasm_bindgen_test]
+    async fn test_propagation_timeout() {
+        let propagation = setup_propagation().await;
+        let message = create_test_message(MessagePriority::Medium);
+
+        propagation.handle_message(message.clone()).await.unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(11));
+
+        let metrics = propagation.get_metrics();
+        assert_eq!(metrics.messages_failed, 1);
+    }
+
+   #[wasm_bindgen_test]
     async fn test_duplicate_messages() {
         let propagation = setup_propagation().await;
         let message = create_test_message(MessagePriority::Medium);
