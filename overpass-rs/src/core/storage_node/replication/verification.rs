@@ -1,14 +1,16 @@
-// ./src/core/storage_node/replication/verification.rs
-
-use std::sync::RwLock;
-use sp_std::sync::RwLock;
 use std::sync::Arc;
+use parking_lot::RwLock;
+use thiserror::Error;
 
-use crate::core::storage_node::replication::state::StateManager;
+use crate::core::storage_node::replication::state::{
+    StateManager, ReplicationState, ConsistencyState, DistributionState
+};
 use crate::core::storage_node::replication::consistency::ConsistencyValidator;
 use crate::core::storage_node::replication::distribution::DistributionManager;
 use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
+use crate::core::zkps::plonky2::Plonky2System;
 use crate::core::types::boc::BOC;
+use crate::core::error::errors::SystemError;
 
 #[derive(Error, Debug)]
 pub enum VerificationError {
@@ -24,122 +26,80 @@ pub enum VerificationError {
 
 pub type VerificationResult<T> = Result<T, VerificationError>;
 
-pub struct VerificationManager {
-    state_manager: Arc<RwLock<StateManager>>,
-    consistency_validator: Arc<ConsistencyValidator>,
+pub struct VerificationManager<F: RichField + Extendable<D>, const D: usize> {
+    state_manager: Arc<StateManager>,
+    consistency_validator: Arc<ConsistencyValidator<Plonky2System>>,
     distribution_manager: Arc<DistributionManager>,
-    circuit_builder: ZkCircuitBuilder,
+    circuit_builder: ZkCircuitBuilder<F, D>,
 }
 
-impl VerificationManager {
+impl<F: RichField + Extendable<D>, const D: usize> VerificationManager<F, D> {
     pub fn new(
         state_manager: StateManager,
-        consistency_validator: ConsistencyValidator,
+        consistency_validator: ConsistencyValidator<Plonky2System>,
         distribution_manager: DistributionManager,
-    ) -> Self {
-        let circuit_builder = ZkCircuitBuilder::new(());  
-        Self {
-            state_manager: Arc::new(RwLock::new(state_manager)),
+        config: CircuitConfig,
+    ) -> Result<Self, SystemError> {
+        Ok(Self {
+            state_manager: Arc::new(state_manager),
             consistency_validator: Arc::new(consistency_validator),
             distribution_manager: Arc::new(distribution_manager),
-            circuit_builder,
-        }
-    }
-    pub async fn verify_consistency(
-        &self,
-        circuit: &ZkCircuitBuilder,
-        zkp_interface: &ZkpInterface,
-    ) -> VerificationResult<bool> {
-        let consistency_result = self
-            .consistency_validator
-            .verify_consistency(circuit, zkp_interface)
-            .await
-            .map_err(|e| VerificationError::ConsistencyError(e.to_string()))?;
-        Ok(consistency_result)
+            circuit_builder: ZkCircuitBuilder::new(config),
+        })
     }
 
-
-    pub async fn verify(&self, zkp_interface: &ZkpInterface) -> VerificationResult<bool> {
-        // First verify the current state
-        let state = self.state_manager.read().await;
+    pub async fn verify(&self) -> VerificationResult<bool> {
+        let state = self.state_manager.get_state()?;
         if !state.is_valid() {
             return Err(VerificationError::StateError(
                 "Invalid replication state".to_string(),
             ));
         }
 
-        // Build verification circuit
-        let circuit = self.build_verification_circuit().await?;
-
-        // Verify consistency
-        let consistency_result = self
-            .verify_consistency(&circuit, zkp_interface)
-            .await
-            .map_err(|e| VerificationError::ConsistencyError(e.to_string()))?;
-
-        // Verify distribution
-        let distribution_result = self
-            .verify_distribution(&circuit, zkp_interface)
-            .await
-            .map_err(|e| VerificationError::DistributionError(e.to_string()))?;
-
-        // Verify ZKP
-        self.verify_zkp(&circuit, zkp_interface).await?;
+        let circuit = self.build_verification_circuit(&state).await?;
+        
+        let consistency_result = self.verify_consistency(&circuit).await?;
+        let distribution_result = self.verify_distribution(&circuit).await?;
+        
+        self.verify_zkp(&circuit).await?;
 
         Ok(consistency_result && distribution_result)
     }
 
-    async fn build_verification_circuit(&self) -> VerificationResult<BOC> {
-        let state = self.state_manager.read().await;
-        let circuit = self
-            .circuit_builder
-            .build_verification_circuit(&state)
-            .map_err(|e| VerificationError::StateError(e.to_string()))?;
-        Ok(circuit)
+    async fn build_verification_circuit(&self, state: &ReplicationState) -> VerificationResult<BOC> {
+        self.circuit_builder
+            .build_verification_circuit(state)
+            .map_err(|e| VerificationError::StateError(e.to_string()))
     }
 
-    async fn verify_consistency(
-        &self,
-        circuit: &BOC,
-        zkp_interface: &ZkpInterface,
-    ) -> VerificationResult<bool> {
-        let consistency_state = self.consistency_validator.get_state().await;
-        let result = self
-            .consistency_validator
-            .verify_with_circuit(circuit, zkp_interface, &consistency_state)
+    async fn verify_consistency(&self, circuit: &BOC) -> VerificationResult<bool> {
+        self.consistency_validator
+            .verify_consistency(circuit)
             .await
-            .map_err(|e| VerificationError::ConsistencyError(e.to_string()))?;
-        Ok(result)
+            .map_err(|e| VerificationError::ConsistencyError(e.to_string()))
     }
 
-    async fn verify_distribution(
-        &self,
-        circuit: &BOC,
-        zkp_interface: &ZkpInterface,
-    ) -> VerificationResult<bool> {
-        let distribution_state = self.distribution_manager.get_state().await;
-        let result = self
-            .distribution_manager
-            .verify_with_circuit(circuit, zkp_interface, &distribution_state)
+    async fn verify_distribution(&self, circuit: &BOC) -> VerificationResult<bool> {
+        self.distribution_manager
+            .verify_distribution(circuit)
             .await
-            .map_err(|e| VerificationError::DistributionError(e.to_string()))?;
-        Ok(result)
+            .map_err(|e| VerificationError::DistributionError(e.to_string()))
     }
 
-    async fn verify_zkp(&self, circuit: &BOC, zkp_interface: &ZkpInterface) -> VerificationResult<()> {
-        zkp_interface
+    async fn verify_zkp(&self, circuit: &BOC) -> VerificationResult<()> {
+        self.consistency_validator
             .verify_proof(circuit)
             .await
             .map_err(|e| VerificationError::ZkpError(e.to_string()))
     }
 
-    pub async fn get_verification_state(&self) -> VerificationResult<VerificationState> {
-        let state = self.state_manager.read().await;
-        let consistency_state = self.consistency_validator.get_state().await;
-        let distribution_state = self.distribution_manager.get_state().await;
+    pub fn get_verification_state(&self) -> VerificationResult<VerificationState> {
+        let state = self.state_manager.get_state()?;
+        let consistency_state = self.consistency_validator.get_state()?;
+        let distribution_state = self.distribution_manager.get_state()?;
 
         Ok(VerificationState {
-            replication_state: state.clone(),
+            replication_state: state,
             consistency_state,
             distribution_state,
         })
@@ -156,40 +116,50 @@ pub struct VerificationState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::zkps::plonky2::Plonky2System;
+    use crate::core::zkps::plonky2::Config as PlonkyConfig;
 
     #[tokio::test]
     async fn test_verification_manager() {
-        let state_manager = StateManager::new();
-        let consistency_validator = ConsistencyValidator::new(Default::default(), Default::default());
-        let distribution_manager = DistributionManager::new(Default::default(), Default::default(), Default::default());
+        let state_manager = StateManager::new().expect("Failed to create state manager");
+        let plonky_system = Plonky2System::default();
+        let consistency_validator = ConsistencyValidator::new(Arc::new(plonky_system.clone()));
+        let distribution_manager = DistributionManager::new(
+            Arc::new(plonky_system),
+            Default::default(),
+            Default::default(),
+        );
         
         let verification_manager = VerificationManager::new(
             state_manager,
             consistency_validator,
             distribution_manager,
-        );
+            PlonkyConfig::default(),
+        ).expect("Failed to create verification manager");
 
-        let zkp_system = Plonky2System::new(/* Add required arguments */);
-        let zkp_interface = ZkpInterface::new(zkp_system);
-
-        let result = verification_manager.verify(&zkp_interface).await;
+        let result = verification_manager.verify().await;
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
+ 
     #[tokio::test]
     async fn test_verification_state() {
-        let state_manager = StateManager::new();
-        let consistency_validator = ConsistencyValidator::new(Default::default(), Default::default());
-        let distribution_manager = DistributionManager::new(Default::default(), Default::default(), Default::default());
+        let state_manager = StateManager::new().expect("Failed to create state manager");
+        let plonky_system = Plonky2System::default();
+        let consistency_validator = ConsistencyValidator::new(Arc::new(plonky_system.clone()));
+        let distribution_manager = DistributionManager::new(
+            Arc::new(plonky_system),
+            Default::default(),
+            Default::default(),
+        );
         
         let verification_manager = VerificationManager::new(
             state_manager,
             consistency_validator,
             distribution_manager,
-        );
-
-        let state = verification_manager.get_verification_state().await;
+            PlonkyConfig::default(),
+        ).expect("Failed to create verification manager");
+ 
+        let state = verification_manager.get_verification_state();
         assert!(state.is_ok());
         
         let state = state.unwrap();
@@ -197,25 +167,82 @@ mod tests {
         assert!(state.consistency_state.is_valid());
         assert!(state.distribution_state.is_valid());
     }
+    
     #[tokio::test]
     async fn test_verification_error_handling() {
-        let state_manager = StateManager::new();
-        let consistency_validator = ConsistencyValidator::new(Default::default(), Default::default());
-        let distribution_manager = DistributionManager::new(Default::default(), Default::default(), Default::default());
+        let state_manager = StateManager::new().expect("Failed to create state manager");
+        let plonky_system = Plonky2System::default();
+        let mut consistency_validator = ConsistencyValidator::new(Arc::new(plonky_system.clone()));
+        let distribution_manager = DistributionManager::new(
+            Arc::new(plonky_system),
+            Default::default(),
+            Default::default(),
+        );
+ 
+        // Create manager with validator configured to fail
+        consistency_validator.set_force_verification_error(true);
         
         let verification_manager = VerificationManager::new(
             state_manager,
             consistency_validator,
             distribution_manager,
-        );
-
-        let zkp_system = Plonky2System::new(/* Add required arguments */);
-        let mut zkp_interface = ZkpInterface::new(zkp_system);
+            PlonkyConfig::default(),
+        ).expect("Failed to create verification manager");
         
-        // Simulate an error condition
-        zkp_interface.inject_error(/* Add required arguments */);
-        
-        let result = verification_manager.verify(&zkp_interface).await;
+        let result = verification_manager.verify().await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), VerificationError::ZkpError(_)));
-    }}
+        assert!(matches!(result.unwrap_err(), VerificationError::ConsistencyError(_)));
+    }
+ 
+    #[tokio::test]
+    async fn test_invalid_state() {
+        let mut state_manager = StateManager::new().expect("Failed to create state manager");
+        let plonky_system = Plonky2System::default();
+        let consistency_validator = ConsistencyValidator::new(Arc::new(plonky_system.clone()));
+        let distribution_manager = DistributionManager::new(
+            Arc::new(plonky_system),
+            Default::default(),
+            Default::default(),
+        );
+ 
+        // Corrupt state manager
+        state_manager.corrupt_state();
+        
+        let verification_manager = VerificationManager::new(
+            state_manager,
+            consistency_validator, 
+            distribution_manager,
+            PlonkyConfig::default(),
+        ).expect("Failed to create verification manager");
+ 
+        let result = verification_manager.verify().await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), VerificationError::StateError(_)));
+    }
+ 
+    #[tokio::test]
+    async fn test_distribution_verification() {
+        let state_manager = StateManager::new().expect("Failed to create state manager");
+        let plonky_system = Plonky2System::default();
+        let consistency_validator = ConsistencyValidator::new(Arc::new(plonky_system.clone()));
+        let mut distribution_manager = DistributionManager::new(
+            Arc::new(plonky_system),
+            Default::default(),
+            Default::default(),
+        );
+ 
+        // Configure distribution manager to fail verification
+        distribution_manager.set_force_verification_error(true);
+        
+        let verification_manager = VerificationManager::new(
+            state_manager,
+            consistency_validator,
+            distribution_manager,
+            PlonkyConfig::default(),
+        ).expect("Failed to create verification manager");
+ 
+        let result = verification_manager.verify().await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), VerificationError::DistributionError(_)));
+    }
+ }
