@@ -103,7 +103,6 @@ impl ResponseManager {
         }
         let storage_node = StorageNode::new(
             node_id,
-            0,
             StorageNodeConfig {
                 battery_config: storage_node_contract::BatteryConfig::default(),
                 sync_config: storage_node_contract::SyncConfig::default(),
