@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use parking_lot::RwLock;
-use hashbrown::{HashMap, HashSet};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use web_sys::{console, window};
-use serde::{Serialize, Deserialize};
 use wasm_bindgen_futures::spawn_local;
 
 use crate::core::error::errors::{SystemError, SystemErrorType};
@@ -196,7 +196,7 @@ impl SynchronizationManager {
             }
 
             // Check overlap score
-            let overlap_score = self.overlap_manager.calculate_overlap_score(*peer);
+            let overlap_score = self.overlap_manager.calculate_overlap_score(*peer, [0; 32]);
             if overlap_score < self.config.min_overlap_for_sync {
                 continue;
             }
@@ -218,7 +218,7 @@ impl SynchronizationManager {
             if active_syncs.len() >= self.config.max_concurrent_syncs {
                 return Err(SystemError::new(
                     SystemErrorType::TooManySyncs,
-                    "Maximum concurrent syncs reached"
+                    "Maximum concurrent syncs reached".to_owned()
                 ));
             }
             active_syncs.insert(*peer);
@@ -305,11 +305,10 @@ impl SynchronizationManager {
         let verified = self.verified_states.read().get(peer)
             .cloned()
             .unwrap_or_default();
-        
-        let all_states = self.overlap_manager.get_shared_states(peer);
+
+        let all_states = self.overlap_manager.as_ref().get_shared_states(peer).await?;
         Ok(all_states.difference(&verified).copied().collect())
     }
-
     // Verify specific state
     async fn verify_state(&self, peer: &[u8; 32], state: [u8; 32]) -> Result<(), SystemError> {
         // Here we would implement actual state verification
@@ -388,7 +387,7 @@ mod tests {
         let manager = setup_sync_manager().await;
         
         // Drain battery
-        manager.battery_system.consume_charge(90).await.unwrap();
+        Arc::get_mut(&mut manager.battery_system).unwrap().consume_charge(90).await.unwrap();
         
         // Try sync cycle
         manager.sync_cycle().await;
