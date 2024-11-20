@@ -1,8 +1,6 @@
 use std::sync::Arc;
-use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::hash::hash_types::RichField;
 use plonky2_field::extension::Extendable;
-use serde::{Serialize, Deserialize};
     
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
@@ -56,15 +54,21 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 
     pub async fn store_data(&mut self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
         if self.store_boc || self.store_proof {
-            self.storage_node
-                .store(&boc, &proof)
-                .await
-                .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
-            
             if self.store_boc {
+                self.storage_node
+                    .as_ref()
+                    .store_boc(&boc)
+                    .await
+                    .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
                 self.metrics.store_boc += 1;
             }
+        
             if self.store_proof {
+                self.storage_node
+                    .as_ref()
+                    .store_proof(&proof)
+                    .await
+                    .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
                 self.metrics.store_proof += 1;
             }
         }
