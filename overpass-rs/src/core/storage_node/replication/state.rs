@@ -1,17 +1,33 @@
 use std::sync::Arc;
 use parking_lot::RwLock;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
+use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
+use crate::core::hierarchy::root::sparse_merkle_tree_r::SparseMerkleTreeR;
+use crate::core::zkps::plonky2::Plonky2System;
+use crate::core::zkps::proof::ZkProof;
+use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
+use crate::core::storage_node::replication::consistency::ConsistencyValidator;
+use crate::core::storage_node::replication::distribution::DistributionManager;
+use crate::core::storage_node::replication::verification::VerificationManager;
+use crate::core::storage_node::storage_node_contract::StorageNode;
+use crate::core::storage_node::storage_node_contract::StorageNodeConfig;
+use sha2::{Sha256, Digest};
 
-// State types for hierarchy
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateType {
-    Wallet,         // Individual wallet states
-    Intermediate,   // Intermediate contract states
-    Root,          // Global root state
+    Wallet,
+    Intermediate, 
+    Root,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StateError {
+    InvalidStateType,
+    InvalidStateHash,
+    StateNotFound,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,83 +40,62 @@ pub struct StateMetrics {
     pub verification_time: f64,
 }
 
-impl Default for StateMetrics {
-    fn default() -> Self {
-        Self {
-            total_states: 0,
-            wallet_states: 0,
-            intermediate_states: 0,
-            state_updates: 0,
-            merkle_updates: 0,
-            verification_time: 0.0,
-        }
-    }
-}
-
-/// Sparse Merkle Tree node for state management
-#[derive(Debug, Clone)]
-pub struct MerkleNode {
-    pub hash: [u8; 32],
-    pub left: Option<Box<MerkleNode>>,
-    pub right: Option<Box<MerkleNode>>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicationState {
+    pub state_hash: [u8; 32],
     pub state_type: StateType,
-    pub data: Option<BOC>,
+    pub state_metrics: StateMetrics,
 }
 
-impl MerkleNode {
-    pub fn new(hash: [u8; 32], state_type: StateType) -> Self {
-        Self {
-            hash,
-            left: None,
-            right: None,
-            state_type,
-            data: None,
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsistencyState {
+    pub state_hash: [u8; 32],
+    pub state_type: StateType,
+    pub state_metrics: StateMetrics,
+}
 
-    pub fn new_with_data(hash: [u8; 32], state_type: StateType, data: BOC) -> Self {
-        Self {
-            hash,
-            left: None,
-            right: None,
-            state_type,
-            data: Some(data),
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DistributionState {
+    pub state_hash: [u8; 32],
+    pub state_type: StateType,
+    pub state_metrics: StateMetrics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationState {
+    pub replication_state: ReplicationState,
+    pub consistency_state: ConsistencyState,
+    pub distribution_state: DistributionState,
 }
 
 pub struct StateManager {
-    // Hierarchical Merkle trees
     wallet_tree: RwLock<MerkleNode>,
     intermediate_trees: RwLock<HashMap<[u8; 32], MerkleNode>>,
     root_tree: RwLock<MerkleNode>,
-    
-    // State tracking
     state_hashes: RwLock<HashMap<[u8; 32], StateType>>,
-    state_updates: RwLock<HashMap<[u8; 32], u64>>, // hash -> update count
-    
-    // Metrics
+    state_updates: RwLock<HashMap<[u8; 32], u64>>,
     metrics: RwLock<StateMetrics>,
 }
 
 impl StateManager {
     pub fn new() -> Result<Self, SystemError> {
-        // Initialize empty Merkle trees for each level
-        let wallet_root = MerkleNode::new([0u8; 32], StateType::Wallet);
-        let intermediate_root = MerkleNode::new([0u8; 32], StateType::Intermediate);
-        let root_tree = MerkleNode::new([0u8; 32], StateType::Root);
-
         Ok(Self {
-            wallet_tree: RwLock::new(wallet_root),
+            wallet_tree: RwLock::new(MerkleNode::new()),
             intermediate_trees: RwLock::new(HashMap::new()),
-            root_tree: RwLock::new(root_tree),
+            root_tree: RwLock::new(MerkleNode::new()),
             state_hashes: RwLock::new(HashMap::new()),
             state_updates: RwLock::new(HashMap::new()),
-            metrics: RwLock::new(StateMetrics::default()),
+            metrics: RwLock::new(StateMetrics {
+                total_states: 0,
+                wallet_states: 0,
+                intermediate_states: 0,
+                state_updates: 0,
+                merkle_updates: 0,
+                verification_time: 0.0,
+            }),
         })
     }
 
-    // Update wallet state
     pub async fn update_wallet_state(
         &self,
         wallet_id: [u8; 32],
@@ -108,18 +103,12 @@ impl StateManager {
     ) -> Result<[u8; 32], SystemError> {
         let mut wallet_tree = self.wallet_tree.write();
         let state_hash = self.compute_state_hash(&state);
-        
-        // Create new node
-        let new_node = MerkleNode::new_with_data(state_hash, StateType::Wallet, state);
-        
-        // Update tree
+        let new_node = MerkleNode::new(state_hash, StateType::Wallet, state);
         self.update_merkle_tree(&mut wallet_tree, wallet_id, new_node)?;
         
-        // Track state
         self.state_hashes.write().insert(state_hash, StateType::Wallet);
         *self.state_updates.write().entry(state_hash).or_insert(0) += 1;
         
-        // Update metrics
         let mut metrics = self.metrics.write();
         metrics.wallet_states += 1;
         metrics.total_states += 1;
@@ -128,7 +117,6 @@ impl StateManager {
         Ok(state_hash)
     }
 
-    // Update intermediate state
     pub async fn update_intermediate_state(
         &self,
         contract_id: [u8; 32],
@@ -136,18 +124,12 @@ impl StateManager {
     ) -> Result<[u8; 32], SystemError> {
         let mut intermediate_trees = self.intermediate_trees.write();
         let state_hash = self.compute_state_hash(&state);
-        
-        // Create new node
         let new_node = MerkleNode::new_with_data(state_hash, StateType::Intermediate, state);
-        
-        // Update or insert tree
         intermediate_trees.insert(contract_id, new_node);
         
-        // Track state
         self.state_hashes.write().insert(state_hash, StateType::Intermediate);
         *self.state_updates.write().entry(state_hash).or_insert(0) += 1;
         
-        // Update metrics
         let mut metrics = self.metrics.write();
         metrics.intermediate_states += 1;
         metrics.total_states += 1;
@@ -156,20 +138,15 @@ impl StateManager {
         Ok(state_hash)
     }
 
-    // Update root state
     pub async fn update_root_state(&self, state: BOC) -> Result<[u8; 32], SystemError> {
         let mut root_tree = self.root_tree.write();
         let state_hash = self.compute_state_hash(&state);
-        
-        // Create new node
         let new_node = MerkleNode::new_with_data(state_hash, StateType::Root, state);
         *root_tree = new_node;
         
-        // Track state
         self.state_hashes.write().insert(state_hash, StateType::Root);
         *self.state_updates.write().entry(state_hash).or_insert(0) += 1;
         
-        // Update metrics
         let mut metrics = self.metrics.write();
         metrics.total_states += 1;
         metrics.state_updates += 1;
@@ -177,7 +154,6 @@ impl StateManager {
         Ok(state_hash)
     }
 
-    // Update Merkle tree with new node
     fn update_merkle_tree(
         &self,
         tree: &mut MerkleNode,
@@ -186,35 +162,31 @@ impl StateManager {
     ) -> Result<(), SystemError> {
         let mut current = tree;
         
-        // Traverse path to insert node
         for i in 0..256 {
             let bit = (path[i / 8] >> (7 - (i % 8))) & 1;
             
             if bit == 0 {
                 if current.left.is_none() {
-                    current.left = Some(Box::new(node.clone()));
+                    current.left = Some(Box::new(node));
                     break;
                 }
                 current = current.left.as_mut().unwrap();
             } else {
                 if current.right.is_none() {
-                    current.right = Some(Box::new(node.clone()));
+                    current.right = Some(Box::new(node));
                     break;
                 }
                 current = current.right.as_mut().unwrap();
             }
         }
 
-        // Update metrics
         self.metrics.write().merkle_updates += 1;
-        
         Ok(())
     }
 
-    // Generate Merkle proof for state
     pub fn generate_proof(&self, state_hash: [u8; 32]) -> Result<Vec<[u8; 32]>, SystemError> {
         let state_type = self.state_hashes.read().get(&state_hash).ok_or(
-            SystemError::new(SystemErrorType::StateNotFound, "State hash not found")
+            SystemError::new(SystemErrorType::StateNotFound, "State hash not found".to_owned())
         )?;
         
         let proof = match state_type {
@@ -226,7 +198,6 @@ impl StateManager {
         Ok(proof)
     }
 
-    // Generate proof for wallet state
     fn generate_wallet_proof(&self, state_hash: [u8; 32]) -> Result<Vec<[u8; 32]>, SystemError> {
         let wallet_tree = self.wallet_tree.read();
         let mut proof = Vec::new();
@@ -234,7 +205,6 @@ impl StateManager {
         Ok(proof)
     }
 
-    // Generate proof for intermediate state
     fn generate_intermediate_proof(&self, state_hash: [u8; 32]) -> Result<Vec<[u8; 32]>, SystemError> {
         let intermediate_trees = self.intermediate_trees.read();
         let mut proof = Vec::new();
@@ -248,28 +218,31 @@ impl StateManager {
         Ok(proof)
     }
 
-    // Collect proof nodes
     fn collect_proof_nodes(
         &self,
         node: &MerkleNode,
         target_hash: [u8; 32],
         proof: &mut Vec<[u8; 32]>,
     ) -> Result<bool, SystemError> {
-        if node.hash == target_hash {
-            proof.push(node.hash);
+        if node.hash == Some(target_hash) {
+            proof.push(target_hash);
             return Ok(true);
         }
 
         if let Some(left) = &node.left {
             if self.collect_proof_nodes(left, target_hash, proof)? {
-                proof.push(node.hash);
+                if let Some(hash) = node.hash {
+                    proof.push(hash);
+                }
                 return Ok(true);
             }
         }
 
         if let Some(right) = &node.right {
             if self.collect_proof_nodes(right, target_hash, proof)? {
-                proof.push(node.hash);
+                if let Some(hash) = node.hash {
+                    proof.push(hash);
+                }
                 return Ok(true);
             }
         }
@@ -277,24 +250,19 @@ impl StateManager {
         Ok(false)
     }
 
-    // Verify state exists
     pub fn verify_state(&self, state_hash: [u8; 32]) -> bool {
         self.state_hashes.read().contains_key(&state_hash)
     }
 
-    // Get state type
     pub fn get_state_type(&self, state_hash: [u8; 32]) -> Option<StateType> {
         self.state_hashes.read().get(&state_hash).cloned()
     }
 
-    // Get state metrics
     pub fn get_metrics(&self) -> StateMetrics {
         self.metrics.read().clone()
     }
 
-    // Compute state hash
     fn compute_state_hash(&self, state: &BOC) -> [u8; 32] {
-        use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
         hasher.update(&state.serialize());
         let result = hasher.finalize();
@@ -315,6 +283,7 @@ mod tests {
         BOC {
             cells: vec![],
             references: vec![],
+            roots: vec![],
         }
     }
 
