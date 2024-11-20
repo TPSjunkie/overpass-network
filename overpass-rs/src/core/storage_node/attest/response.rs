@@ -103,6 +103,7 @@ impl ResponseManager {
         }
         let storage_node = StorageNode::new(
             node_id,
+            0, // Add the missing i64 argument here
             StorageNodeConfig {
                 battery_config: storage_node_contract::BatteryConfig::default(),
                 sync_config: storage_node_contract::SyncConfig::default(),
@@ -111,8 +112,7 @@ impl ResponseManager {
                 node_id,
                 fee: 0,
                 whitelist: HashSet::new(),
-            },
-            HashMap::new()
+            }
         )?;
         // Create and return the ResponseManager instance
         Ok(ResponseManager {
@@ -127,8 +127,7 @@ impl ResponseManager {
             })),
             last_verification_time: Arc::new(RwLock::new(None)),
         })
-    }
-    pub fn start_verification(&self) -> Result<(), ResponseManagerError> {        if self.is_verifying.compare_exchange(
+    }    pub fn start_verification(&self) -> Result<(), ResponseManagerError> {        if self.is_verifying.compare_exchange(
             false,
             true,
             Ordering::SeqCst,
@@ -209,7 +208,7 @@ impl ResponseManager {
     }
 
     async fn check_response_verification(&self) -> Result<(), SystemError> {
-        let boc = self.storage_node.retrieve_boc(&[0u8; 32]).await.map_err(|e| e.into())?;
+        let boc = self.storage_node.as_ref().retrieve_bag_of_cells(&[0u8; 32]).await.map_err(|e| e.into())?;
 
         if boc.cells.len() > MAX_RESPONSE_SIZE {
             return Err(SystemError::new(
@@ -279,15 +278,16 @@ impl ResponseManager {
 
         Ok(())
     }
+
     async fn verify_single_response(&self, proof: &[u8; 32]) -> Result<(), SystemError> {
-        let zk_proof = self.storage_node.as_ref().retrieve_proof(proof).await?;
+        let zk_proof = self.storage_node.retrieve_proof(proof).await?;
         let mut proof_bytes = zk_proof.proof_data.to_vec();
         proof_bytes.extend_from_slice(&zk_proof.proof_data);
         let proof = Proof::<ark_bn254::Bn254, C, D>::read(&proof_bytes[..]).map_err(|_| SystemError::new(
             SystemErrorType::InvalidProof,
             "Invalid proof".into()
         ))?;
-        match proof.verify() {  
+        match proof.verify() {
             Ok(true) => Ok(()),
             Ok(false) => Err(SystemError::new(
                 SystemErrorType::InvalidProof,
@@ -307,9 +307,7 @@ impl ResponseManager {
     pub fn is_currently_verifying(&self) -> bool {
         self.is_verifying.load(Ordering::SeqCst)
     }
-}
-
-impl Clone for ResponseManager {
+}impl Clone for ResponseManager {
     fn clone(&self) -> Self {
         Self {
             storage_node: Arc::clone(&self.storage_node),
