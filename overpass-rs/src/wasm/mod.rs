@@ -4,6 +4,7 @@
 pub mod bindings_wasm;
 pub mod runtime_wasm;
 pub mod types_wasm;
+pub mod conversion_wasm;
 
 // Re-export for convenience
 pub use self::bindings_wasm::*;
