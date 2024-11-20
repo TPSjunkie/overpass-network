@@ -84,6 +84,14 @@ impl Plonky2SystemHandle {
     }
 }
 
+impl Default for Plonky2System {
+    fn default() -> Self {
+        Self {
+            circuit_config: CircuitConfig::standard_recursion_config(),
+            state_transition_circuit: StateTransitionCircuitData::default(),
+        }
+    }
+}
 impl Plonky2System {
     pub fn generate_proof(
         &self,
