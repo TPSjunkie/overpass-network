@@ -83,6 +83,29 @@ pub struct StateManager {
     state_updates: RwLock<HashMap<[u8; 32], u64>>,
     metrics: RwLock<StateMetrics>,
 }
+impl StateManager {
+    pub fn new() -> Result<Self, SystemError> {
+        let metrics = StateMetrics::default();
+        Ok(Self {
+            wallet_proofs: RwLock::new(HashMap::new()),
+            intermediate_trees: RwLock::new(HashMap::new()),
+            root_tree: RwLock::new(MerkleNode {
+                hash: None,
+                data: None,
+                left: None,
+                right: None,
+                virtual_cell: None,
+                value: None,
+                is_leaf: false,
+                is_virtual: false,
+                is_empty: true,
+            }),
+            state_hashes: RwLock::new(HashMap::new()),
+            state_updates: RwLock::new(HashMap::new()),
+            metrics: RwLock::new(metrics),
+        })
+    }
+}
 
 impl StateManager {
     pub async fn update_wallet_state(
@@ -112,7 +135,7 @@ impl StateManager {
         let state_hash = self.compute_state_hash(&state);
         let new_node = MerkleNode {
             hash: Some(state_hash),
-            data: Some(state.serialize().map_err(|e| SystemError::new(SystemErrorType::BocSerializationError, e.to_string()))?),
+            data: Some(state.serialize().map_err(|e| SystemError::new(SystemErrorType::VerificationError, e.to_string()))?),
             left: None,
             right: None,
             virtual_cell: None,
@@ -142,13 +165,23 @@ impl StateManager {
         state: BOC,
     ) -> Result<[u8; 32], SystemError> {
         let state_hash = self.compute_state_hash(&state);
-        let new_node = MerkleNode::from_data(state_hash, state);
-        let mut root_tree = self.root_tree.write();
+        let new_node = MerkleNode {
+            hash: Some(state_hash),
+            data: Some(state.serialize().map_err(|e| SystemError::new(SystemErrorType::VerificationError, e.to_string()))?),
+            left: None,
+            right: None,
+            virtual_cell: None,
+            value: None,
+            is_leaf: true,
+            is_virtual: false,
+            is_empty: false,
+        };
+        let mut root_tree = self.root_tree.write().await;
         self.update_merkle_tree(&mut root_tree, state_hash, new_node)?;
-        self.state_hashes.write().insert(state_hash, StateType::Root);
-        *self.state_updates.write().entry(state_hash).or_insert(0) += 1;
+        self.state_hashes.write().await.insert(state_hash, StateType::Root);
+        *self.state_updates.write().await.entry(state_hash).or_insert(0) += 1;
 
-        let mut metrics = self.metrics.write();
+        let mut metrics = self.metrics.write().await;
         metrics.total_states += 1;
         metrics.state_updates += 1;
 
