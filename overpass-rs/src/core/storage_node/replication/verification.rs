@@ -119,6 +119,7 @@ mod tests {
     use crate::core::zkps::plonky2::Config as PlonkyConfig;
 
     #[tokio::test]
+    #[tokio::test]
     async fn test_verification_manager() {
         let state_manager = StateManager::new().expect("Failed to create state manager");
         let plonky_system = Plonky2System::default();
@@ -138,11 +139,9 @@ mod tests {
 
         let result = verification_manager.verify().await;
         assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
- 
-    #[tokio::test]
-    async fn test_verification_state() {
+        let (is_valid, _, _) = result.unwrap();
+        assert!(is_valid);
+    }    async fn test_verification_state() {
         let state_manager = StateManager::new().expect("Failed to create state manager");
         let plonky_system = Plonky2System::default();
         let consistency_validator = ConsistencyValidator::new(Arc::new(plonky_system.clone()));
@@ -166,8 +165,7 @@ mod tests {
         assert!(state.replication_state.is_valid());
         assert!(state.consistency_state.is_valid());
         assert!(state.distribution_state.is_valid());
-    }
-    
+    }    
     #[tokio::test]
     async fn test_verification_error_handling() {
         let state_manager = StateManager::new().expect("Failed to create state manager");
