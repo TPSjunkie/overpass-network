@@ -74,7 +74,7 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
         if self.retrieve_boc {
             let boc = self.storage_node
-                .retrieve_data(boc_id)
+                .retrieve_boc(boc_id)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
 
