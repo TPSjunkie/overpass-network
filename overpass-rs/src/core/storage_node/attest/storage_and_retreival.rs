@@ -57,7 +57,7 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub async fn store_data(&mut self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
         if self.store_boc || self.store_proof {
             self.storage_node
-                .store_data(&boc, &proof)
+                .store(&boc, &proof)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
             
@@ -74,24 +74,24 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
         if self.retrieve_boc {
             let boc = self.storage_node
-                .retrieve_boc(boc_id)
-                .await
-                .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
-
-            self.metrics.retrieve_boc += 1;
-            Ok(boc)
-        } else {
-            Err(SystemError::new(
-                SystemErrorType::OperationDisabled,
-                "Storage and retrieval verification is disabled".to_string(),
-            ))
-        }
+    .get_boc(boc_id)
+    .await
+    .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;  
+    
+    self.metrics.retrieve_boc += 1;
+    Ok(boc)
+    } else {
+    Err(SystemError::new(
+    SystemErrorType::OperationDisabled,
+    "Storage and retrieval retrieval is disabled".to_string(),
+    ))
     }
+    }   
 
     pub async fn retrieve_proof(&self, proof_id: &[u8; 32]) -> Result<ZkProof, SystemError> {
         if self.retrieve_proof {
             let proof = self.storage_node
-                .retrieve_proof(proof_id)
+                .get_proof(proof_id)
                 .await
                 .map_err(|e| SystemError::new(SystemErrorType::StorageError, e.to_string()))?;
 
@@ -107,20 +107,20 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 
     pub async fn verify_proof(&self, proof: &ZkProof) -> Result<bool, SystemError> {
         if self.verify_proof {
-            let mut builder = ZkCircuitBuilder::<F, 2>::new(Default::default());
-            let circuit = builder.build_circuit().map_err(|e| SystemError::new(
-                SystemErrorType::CircuitError,
-                format!("Failed to build circuit: {}", e)
-            ))?;
-            
-            let mut pw = PartialWitness::new();
-            pw.set_proof_target(&proof.proof_data);
-            
-            let circuit_proof = circuit.prove(pw).map_err(|e| SystemError::new(
-                SystemErrorType::ProofError, 
-                format!("Failed to generate proof: {}", e)
-            ))?;
-
+            let circuit_proof = ZkCircuitBuilder::new(proof.clone());
+            let circuit_proof = circuit_proof.build().map_err(|e| {
+                SystemError::new(
+                    SystemErrorType::CircuitError,
+                    format!("Failed to build circuit: {:?}", e),
+                )
+            })?;
+            let proof_bytes = bincode::serialize(&proof).map_err(|e| {
+                SystemError::new(
+                    SystemErrorType::SerializationError,
+                    format!("Failed to serialize proof: {}", e),
+                )
+            })?;
+            let proof_bytes = proof_bytes.to_vec();
             match circuit_proof.verify() {
                 Ok(true) => Ok(true),
                 Ok(false) => Err(SystemError::new(
@@ -129,7 +129,7 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
                 )),
                 Err(e) => Err(SystemError::new(
                     SystemErrorType::VerificationError,
-                    format!("Error during proof verification: {}", e)
+                    format!("Error during proof verification: {:?}", e)
                 )),
             }
         } else {
