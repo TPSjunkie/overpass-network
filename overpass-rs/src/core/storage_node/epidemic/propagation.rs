@@ -207,18 +207,91 @@ impl EpidemicPropagation {
         Ok(selected_peers)
     }
 
-    async fn propagate_to_peer(&self, message: &PropagationMessage, peer: &[u8; 32]) -> Result<(), SystemError> {
-        self.battery_system.consume_charge(message.battery_requirement).await?;
+    async fn propagate_to_peer(
+        &self,
+        message: &PropagationMessage,
+        peer: &[u8; 32],
+    ) -> Result<(), SystemError> {
+        self.battery_system.consume_charge(message.battery_requirement).await?;   
+        self.metrics.write().messages_propagated += 1;
+        self.metrics.write().messages_seen += 1;
+        self.metrics.write().messages_failed += 1;
+        let message = PropagationMessage {
+            id: message.id,
+            priority: message.priority,
+            battery_requirement: message.battery_requirement,
+            content: message.content.clone(),
+            data_hash: message.data_hash,
+            source_node: message.source_node,
+            timestamp: message.timestamp,
+            ttl: message.ttl,
+        };
+        // Serialize the message using Bincode
+        let payload = bincode::serialize(&message).map_err(|e| SystemError::new(
+            SystemErrorType::SerializationError,            
+            format!("Failed to serialize message: {}", e)
+        ))?;
 
+        // Send the payload to the peer using the network layer
+        let network = self.battery_system.get_network().read().await;
+        network.send_message(peer, payload).await.map_err(|e| SystemError::new(
+            SystemErrorType::NetworkError,
+            format!("Failed to send message to peer: {}", e)
+        ))?;
+
+        // Wait for acknowledgment or timeout
+        match network.wait_for_ack(peer, message.id).await {
+            Ok(_) => {
+                self.update_peer_success(peer, true).await;
+                Ok(())
+            },
+            Err(e) => {
+                self.update_peer_success(peer, false).await;
+                Err(SystemError::new(
+                    SystemErrorType::NetworkError,
+                    format!("Failed to receive acknowledgment from peer: {}", e)
+                ))
+            }
+        }
+    }
+
+    async fn propagate_to_peer_old(
+        &self,
+        message: &PropagationMessage,
+        peer: &[u8; 32],
+    ) -> Result<(), SystemError> {
+        self.battery_system.consume_charge(message.battery_requirement).await.map_err(|e| SystemError::new(
+            SystemErrorType::BatteryError,
+            format!("Failed to consume charge: {}", e)
+        ))?;
         let payload = bincode::serialize(&message).map_err(|e| SystemError::new(
             SystemErrorType::SerializationError,
             format!("Failed to serialize message: {}", e)
         ))?;
 
-        self.update_peer_success(peer, true).await;
-        Ok(())
+        // Send the payload to the peer using the network layer
+        let network = self.battery_system.network.read().await;
+        network.send_message(peer, payload).await.map_err(|e| SystemError::new(
+            SystemErrorType::NetworkError,
+            format!("Failed to send message to peer: {}", e)
+        ))?;
+
+        // Wait for acknowledgment or timeout
+        match network.wait_for_ack(peer, message.id).await {
+            Ok(_) => {
+                self.update_peer_success(peer, true).await;
+                Ok(())
+            },
+            Err(e) => {
+                self.update_peer_success(peer, false).await;
+                Err(SystemError::new(
+                    SystemErrorType::NetworkError,
+                    format!("Failed to receive acknowledgment from peer: {}", e)
+                ))
+            }
+        }
     }
-    
+
     async fn update_peer_success(&self, peer: &[u8; 32], success: bool) {
         let mut success_rates = self.peer_success_rates.write();
         let current_rate = success_rates.get(peer).copied().unwrap_or(1.0);
