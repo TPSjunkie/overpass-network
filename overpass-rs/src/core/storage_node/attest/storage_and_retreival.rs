@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
-use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit, CircuitConfig}; 
+use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit}; 
 use crate::core::storage_node::storage_node_contract::StorageNode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,7 +60,7 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
                     .insert(boc.hash(), boc.clone());
                 self.metrics.store_boc += 1;
             }
-        
+    
             if self.store_proof {
                 self.storage_node
                     .stored_proofs.lock().await 
@@ -70,7 +70,6 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
         }
         Ok(())
     }
-
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
         if self.retrieve_boc {
             let boc = self.storage_node
@@ -172,11 +171,12 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
-    use super::*;    
+    use super::*;
     use crate::core::storage_node::storage_node_contract::{
-        StorageNodeConfig, BatteryConfig, SyncConfig, 
+        StorageNodeConfig, BatteryConfig, SyncConfig,
         EpidemicProtocolConfig, NetworkConfig
     };
     use plonky2::field::goldilocks_field::GoldilocksField;
@@ -188,7 +188,7 @@ mod tests {
     type F = GoldilocksField;
 
     async fn setup_storage_and_retrieval() -> StorageAndRetrievalManager<F> {
-        let storage_node = Arc::new(StorageNode::new(                
+        let storage_node = Arc::new(StorageNode::new(
             [0u8; 32],
             0,
             StorageNodeConfig {
@@ -204,9 +204,9 @@ mod tests {
 
         StorageAndRetrievalManager::new(storage_node)
     }
-    #[wasm_bindgen_test]
+#[wasm_bindgen_test]    
     async fn test_storage_and_retrieval_manager() {
-        let manager = setup_storage_and_retrieval().await;
+        let mut manager = setup_storage_and_retrieval().await;
         let result = manager.store_data(BOC::new(), ZkProof::default()).await;
         assert!(result.is_ok());
         let result = manager.retrieve_data(&[0u8; 32]).await;
@@ -215,36 +215,14 @@ mod tests {
         assert!(result.is_ok());
     }
 
-#[cfg(test)]
-mod tests {
-    use super::*;    
-    use crate::core::storage_node::storage_node_contract::{
-        StorageNodeConfig, BatteryConfig, SyncConfig, 
-        EpidemicProtocolConfig, NetworkConfig
-    };
-    use plonky2::field::goldilocks_field::GoldilocksField;
-    use std::collections::HashSet;
-    use wasm_bindgen_test::*;
-
-    wasm_bindgen_test_configure!(run_in_browser);
-
-    type F = GoldilocksField;
-
-    async fn setup_storage_and_retrieval() -> StorageAndRetrievalManager<F> {
-        let storage_node = Arc::new(StorageNode::new(                
-            [0u8; 32],
-            0,
-            StorageNodeConfig {
-                battery_config: BatteryConfig::default(),
-                sync_config: SyncConfig::default(),
-                epidemic_protocol_config: EpidemicProtocolConfig::default(),
-                network_config: NetworkConfig::default(),
-                node_id: [0u8; 32],
-                fee: 0,
-                whitelist: HashSet::new(),
-            },
-        ).unwrap());
-
-        StorageAndRetrievalManager::new(storage_node)
+#[wasm_bindgen_test]
+    async fn test_storage_and_retrieval_error_handling() {
+        let mut manager = setup_storage_and_retrieval().await;
+        let result = manager.store_data(BOC::new(), ZkProof::default()).await;
+        assert!(result.is_ok());
+        let result = manager.retrieve_data(&[0u8; 32]).await;
+        assert!(result.is_err());
+        let result = manager.verify_proof(&ZkProof::default()).await;
+        assert!(result.is_err());
     }
 }
