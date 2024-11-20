@@ -57,7 +57,7 @@ impl ConsistencyValidator {
             self.metrics.write().state_mismatches += 1;
             return Err(SystemError::new(
                 SystemErrorType::StateMismatch,
-                "State hash does not exist in state manager",
+                "State hash does not exist in state manager".to_owned(),
             ));
         }
 
@@ -123,6 +123,7 @@ mod tests {
         BOC {
             cells: vec![],
             references: vec![],
+            roots: todo!(),
         }
     }
 
