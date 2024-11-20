@@ -166,6 +166,7 @@ impl Default for Cell {
 pub struct BOC {
     pub cells: Vec<Cell>,
     pub roots: Vec<usize>,
+    pub(crate) references: Vec<_>,
 }
 
 impl BOC {
