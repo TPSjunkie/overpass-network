@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
 
-use super::state::StateManager;
+use crate::core::storage_node::replication::state::StateManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsistencyMetrics {
@@ -50,7 +50,7 @@ where
         &self,
         state_hash: [u8; 32],
         proof: &[u8],
-        expected_state: &BOC,
+        _expected_state: &BOC,
     ) -> Result<bool, SystemError> {
         let start_time = std::time::Instant::now();
 
@@ -120,6 +120,8 @@ pub trait VerifyProof {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::storage_node::replication::state::StateMetrics;
+
     use super::*;
     use wasm_bindgen_test::*;
 
@@ -150,10 +152,9 @@ mod tests {
             Ok(true)
         }
     }
-
     #[wasm_bindgen_test]
     async fn test_consistency_validation() {
-        let state_manager = Arc::new(StateManager::new().unwrap());
+        let state_manager = Arc::new(StateMetrics::new());
         let proof_manager = Arc::new(MockProofManager::new());
         let validator = ConsistencyValidator::new(state_manager.clone(), proof_manager.clone());
 
@@ -172,10 +173,9 @@ mod tests {
         let metrics = validator.get_metrics();
         assert_eq!(metrics.total_consistency_checks, 1);
     }
-
     #[wasm_bindgen_test]
     async fn test_invalid_consistency() {
-        let state_manager = Arc::new(StateManager::new().unwrap());
+        let state_manager = Arc::new(StateMetrics::new().unwrap());
         let proof_manager = Arc::new(MockProofManager::new());
         let validator = ConsistencyValidator::new(state_manager.clone(), proof_manager.clone());
 
