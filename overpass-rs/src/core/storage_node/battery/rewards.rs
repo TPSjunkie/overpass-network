@@ -46,8 +46,43 @@ pub struct RewardMetrics {
     pub propagation_rewards: u64,
     pub overlap_bonuses: u64,
     pub sync_bonuses: u64,
+    #[serde(with = "reward_tier_serde")]
     pub current_tier: RewardTier,
     pub reward_rate: f64,
+}
+
+mod reward_tier_serde {
+    use super::RewardTier;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(tier: &RewardTier, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let tier_str = match tier {
+            RewardTier::Optimal => "Optimal",
+            RewardTier::High => "High",
+            RewardTier::Base => "Base",
+            RewardTier::Reduced => "Reduced",
+            RewardTier::None => "None",
+        };
+        tier_str.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<RewardTier, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let tier_str = String::deserialize(deserializer)?;
+        match tier_str.as_str() {
+            "Optimal" => Ok(RewardTier::Optimal),
+            "High" => Ok(RewardTier::High),
+            "Base" => Ok(RewardTier::Base),
+            "Reduced" => Ok(RewardTier::Reduced),
+            "None" => Ok(RewardTier::None),
+            _ => Err(serde::de::Error::custom("Invalid RewardTier value")),
+        }
+    }
 }
 
 impl Default for RewardMetrics {
