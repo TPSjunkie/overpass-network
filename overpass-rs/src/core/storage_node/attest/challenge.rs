@@ -230,7 +230,7 @@ impl ChallengeManagerWrapper {
 
         let storage_node = Arc::new(StorageNode::new(
             node_id,
-            challenge_fee,
+            challenge_fee.try_into().unwrap(),
             StorageNodeConfig::new(
                 BatteryConfig::default(),
                 SyncConfig::default(),
@@ -239,9 +239,8 @@ impl ChallengeManagerWrapper {
                 node_id,
                 challenge_fee as i64,
                 HashSet::new()
-            ),
-            HashMap::new()
-        ).await.map_err(|e| JsValue::from_str(&format!("{:?}", e)))?);
+            )
+        ).map_err(|e| JsValue::from_str(&format!("{:?}", e)))?);
 
         let manager = ChallengeManager::create(
             storage_node,
@@ -252,7 +251,6 @@ impl ChallengeManagerWrapper {
 
         Ok(ChallengeManagerWrapper(manager))
     }
-
     pub async fn start_challenge(&self) -> Result<(), JsValue> {
         self.0.start_challenge()
             .await
