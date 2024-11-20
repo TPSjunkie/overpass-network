@@ -232,12 +232,17 @@ impl EpidemicPropagation {
             format!("Failed to serialize message: {}", e)
         ))?;
 
-        // Send the payload to the peer using the network layer
-        let network = self.battery_system.get_network().read().await;
-        network.send_message(peer, payload).await.map_err(|e| SystemError::new(
-            SystemErrorType::NetworkError,
-            format!("Failed to send message to peer: {}", e)
-        ))?;
+        // Send the message to the peer using the network system
+        let network = self.network.read().await;
+        network
+            .send_message(peer, message.id, payload)
+            .await
+            .map_err(|e| {
+                SystemError::new(
+                    SystemErrorType::NetworkError,
+                    format!("Failed to send message to peer: {}", e),
+                )
+            })?;
 
         // Wait for acknowledgment or timeout
         match network.wait_for_ack(peer, message.id).await {
