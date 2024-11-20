@@ -1,43 +1,63 @@
 // src/wasm/conversion_wasm.rs
-
+use crate::wasm::cell_to_json_with_hash;
+use crate::wasm::cell_to_boc_with_hash;
+use crate::wasm::cell_to_json;
+use crate::wasm::cell_to_boc;
+use crate::wasm::WasmCell;
+use crate::wasm::Runtime;
+use wasm_bindgen_test::__rt::detect::Runtime as OtherRuntime;
+/// Conversion functions between Rust and WASM types.
 use wasm_bindgen::prelude::*;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use crate::wasm::types_wasm::{WasmCell, WasmCellType};
-
 
 #[wasm_bindgen]
-pub struct WasmEnv {
-    wasm_cells: Arc<Mutex<HashMap<u32, WasmCell>>>,
-}
-
-#[wasm_bindgen]
-impl WasmEnv {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Result<WasmEnv, JsValue> {
-        Ok(WasmEnv {
-            wasm_cells: Arc::new(Mutex::new(HashMap::new())),
-        })
-    }
-
-    #[wasm_bindgen]
-    pub fn get_cell(&self, cell_id: u32) -> Result<JsValue, JsValue> {
-        let wasm_cells = self.wasm_cells.lock().unwrap();
-        if let Some(cell) = wasm_cells.get(&cell_id) {
-            Ok(JsValue::from_serde(cell).unwrap())
-        } else {
-            Err(JsValue::from_str(&format!("Cell with id {} not found", cell_id)))
-        }
-    }
-
-    #[wasm_bindgen]
-    pub fn add_cell(&self, cell_id: u32, cell_type: u8, data: Vec<u8>) -> Result<(), JsValue> {
-        let mut wasm_cells = self.wasm_cells.lock().unwrap();
-        let cell = WasmCell {
-            cell_type: WasmCellType::from(cell_type),
-            data,
+impl Runtime {
+    pub fn get_cell(&self) -> WasmCell {
+        let cell_type = match self.get_register(0) {
+            Some(0) => WasmCell::Ordinary,
+            Some(1) => WasmCell::PrunedBranch,
+            Some(2) => WasmCell::LibraryReference,
+            Some(3) => WasmCell::MerkleProof,
+            Some(4) => WasmCell::MerkleUpdate,
+            _ => WasmCell::Ordinary, // Default case
         };
-        wasm_cells.insert(cell_id, cell);
-        Ok(())
+        let data = self.get_memory()[..self.get_register(1) as usize].to_vec();
+        let hash = self.get_memory()[self.get_register(1) as usize..(self.get_register(1) + 32) as usize].try_into().unwrap();
+        let depth = self.get_register(2);
+        let is_pruned = self.get_register(3) != 0;
+        WasmCell::new(cell_type, data, hash, depth, is_pruned)
+    }
+
+    pub fn set_cell(&mut self, cell: WasmCell) {
+        let cell_type = match cell.get_cell_type() {
+            WasmCell::Ordinary => 0,
+            WasmCell::PrunedBranch => 1,
+            WasmCell::LibraryReference => 2,
+            WasmCell::MerkleProof => 3,
+            WasmCell::MerkleUpdate => 4,
+        };
+        self.set_register(0, cell_type as i32);
+        self.set_register(1, cell.get_data().len() as i32);
+        self.set_register(2, cell.get_depth() as i32);
+        self.set_register(3, cell.is_pruned() as i32);
+        let start_index = self.get_register(1).unwrap_or(0) as usize;
+        let end_index = start_index + cell.get_data().len();
+        self.memory[start_index..end_index].copy_from_slice(cell.get_data());
+        self.memory[start_index..start_index + 32].copy_from_slice(cell.get_hash());
+    }
+
+    pub fn get_cell_as_boc(&self) -> Vec<u8> {
+        cell_to_boc(&self.get_cell())
+    }
+
+    pub fn get_cell_as_json(&self) -> String {
+        cell_to_json(&self.get_cell())
+    }
+
+    pub fn get_cell_as_boc_with_hash(&self) -> Vec<u8> {
+        cell_to_boc_with_hash(&self.get_cell())
+    }
+
+    pub fn get_cell_as_json_with_hash(&self) -> String {
+        cell_to_json_with_hash(&self.get_cell())
     }
 }
