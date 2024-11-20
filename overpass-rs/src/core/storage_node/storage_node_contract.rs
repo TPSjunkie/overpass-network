@@ -2,7 +2,6 @@ use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
 use crate::core::error::errors::SystemError;
 use crate::core::storage_node::battery::BatteryChargingSystem;
 use crate::core::types::boc::BOC;
-use crate::core::zkps::circuit_builder::Column;
 use crate::core::zkps::proof::ZkProof;
 use crate::core::zkps::zkp::VirtualCell;
 use crate::core::zkps::plonky2::Plonky2System;
@@ -82,7 +81,7 @@ pub struct StorageNode {
     pub whitelist: HashSet<[u8; 32]>,
     pub battery_system: Arc<Mutex<BatteryChargingSystem>>,
     pub plonky2_system: Arc<Mutex<Plonky2System>>,
-    pub consistency_validator: Arc<Mutex<ConsistencyValidator>>,
+    pub consistency_validator: Arc<Mutex<ConsistencyValidator<ProofGenerator>>>,
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub response_manager: Arc<Mutex<ResponseManager>>,
     pub stored_bocs: Arc<Mutex<HashMap<[u8; 32], BOC>>>,
@@ -107,11 +106,13 @@ impl StorageNode {
 
         let consistency_validator = Arc::new(Mutex::new(ConsistencyValidator::new(
             Arc::clone(&plonky2_system),
+            ProofGenerator::try_new().expect("Failed to initialize proof generator"),
         )));
 
         let distribution_manager = Arc::new(Mutex::new(DistributionManager::new(
             config.epidemic_protocol_config.max_propagation_threshold,
             config.epidemic_protocol_config.max_propagation_interval,
+            config.epidemic_protocol_config.max_propagation_threshold, // Added third argument
         )));
 
         let response_manager = Arc::new(Mutex::new(ResponseManager::create(
@@ -140,8 +141,7 @@ impl StorageNode {
             current_virtual_cell,
             current_virtual_cell_count,
         })
-    }
-}
+    }}
 pub struct Storage {
     proof_generator: ProofGenerator,
 }
