@@ -302,13 +302,13 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_reward_tiers() {
-        let distributor = setup_distributor().await;
+        let mut distributor = setup_distributor().await;
         
         // Test optimal conditions
         assert_eq!(distributor.calculate_reward_tier(), RewardTier::Optimal);
         
         // Test reduced battery
-        distributor.battery_system.consume_charge(50).await.unwrap();
+        Arc::get_mut(&mut distributor.battery_system).unwrap().consume_charge(50).await.unwrap();
         assert_eq!(distributor.calculate_reward_tier(), RewardTier::Reduced);
     }
 
