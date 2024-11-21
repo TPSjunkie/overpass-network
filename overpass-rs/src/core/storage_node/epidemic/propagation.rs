@@ -4,12 +4,15 @@ use std::collections::{HashMap, HashSet};
 use web_sys::window;
 use wasm_bindgen_futures::spawn_local;
 use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::network::network_interface::NetworkInterface;
+use crate::network::messages::{NetworkMessage, NetworkState, NodeState, StorageNodeState, StorageNodeStateUpdate};
 use crate::core::storage_node::battery::charging::BatteryChargingSystem;
 use crate::core::storage_node::epidemic::overlap::StorageOverlapManager;
+use crate::core::storage_node::battery::monitoring::{MessagePriority, MessageState, PropagationMessage, PropagationMetrics};
+use crate::core::storage_node::replication::state::{ConsistencyState, DistributionState, ReplicationState, StateManager};
+use crate::core::storage_node::replication::distribution::DistributionManager;
+use crate::core::storage_node::replication::consistency::ConsistencyValidator;
 
-use crate::core::storage_node::battery::monitoring::{
-    MessageState, MessagePriority, PropagationMessage, PropagationMetrics
-};
 
 pub struct EpidemicPropagation {
     battery_system: Arc<BatteryChargingSystem>,
@@ -30,7 +33,7 @@ impl EpidemicPropagation {
     pub fn new(
         battery_system: Arc<BatteryChargingSystem>,
         overlap_manager: Arc<StorageOverlapManager>,
-        network: Arc<RwLock<NetworkSystem>>,
+        network: Arc<RwLock<dyn NetworkSystem>>,
     ) -> Self {
         let mut min_battery_levels = HashMap::new();
         min_battery_levels.insert(MessagePriority::Critical, 5);
