@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use plonky2::hash::hash_types::RichField;
+use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::extension::Extendable;
-use serde::{Serialize, Deserialize};
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
+use serde::{Serialize, Deserialize};
 use crate::core::zkps::proof::ZkProof;
-use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit, plonk::circuit_data::CircuitConfig}; 
-use crate::core::storage_node::storage_node_contract::StorageNode;
+use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageAndRetrievalMetrics {
@@ -33,7 +33,7 @@ impl Default for StorageAndRetrievalMetrics {
     }
 }
 
-pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>> {
+pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>, StorageNode> {
     storage_node: Arc<StorageNode>,
     metrics: StorageAndRetrievalMetrics,
     store_boc: bool,
@@ -44,8 +44,7 @@ pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>> {
     circuit_config: CircuitConfig,
     _marker: std::marker::PhantomData<F>,
 }
-
-impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
+impl<F: RichField + Extendable<2>, StorageNode> StorageAndRetrievalManager<F, StorageNode> {
     pub fn new(storage_node: Arc<StorageNode>) -> Self {
         Self {
             storage_node,
@@ -213,42 +212,34 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::storage_node::storage_node_contract::{
-        StorageNodeConfig, BatteryConfig, SyncConfig,
-        EpidemicProtocolConfig, NetworkConfig
-    };
+    use crate::core::storage_node::storage_node_config::NetworkConfig;
+use crate::core::storage_node::storage_node_config::EpidemicProtocolConfig;
+use crate::core::storage_node::storage_node_config::StorageNodeConfig;
+use super::*;
+  
     use plonky2::field::goldilocks_field::GoldilocksField;
     use std::collections::HashSet;
     use wasm_bindgen_test::*;
-
+    use crate::core::storage_node::battery::charging::BatteryConfig;
+    use crate::core::storage_node::epidemic::sync::SyncConfig;
+    use crate::core::storage_node::storage_node_contract::StorageAndRetrievalManager;
+    
     wasm_bindgen_test_configure!(run_in_browser);
 
     type F = GoldilocksField;
 
-    async fn setup_storage_and_retrieval() -> StorageAndRetrievalManager<F> {
-        let storage_node = Arc::new(StorageNode::new(
-            [0u8; 32],
-            0,
-            StorageNodeConfig {
-                battery_config: BatteryConfig::default(),
-                sync_config: SyncConfig::default(),
-                epidemic_protocol_config: EpidemicProtocolConfig::default(),
-                network_config: NetworkConfig::default(),
-                node_id: [0u8; 32],
-                fee: 0,
-                whitelist: HashSet::new(),
-            },
-        ).unwrap());
+  async fn setup_storage_and_retrieval<StorageNode: Default>() -> StorageAndRetrievalManager<F, StorageNode> {
+      let storage_node = Arc::new(StorageNode::default());
 
-        StorageAndRetrievalManager::new(storage_node)
-    }
-
-    async fn create_test_data() -> (BOC, ZkProof) {
-        let boc = BOC::new();
-        let proof = ZkProof::default();
-        (boc, proof)
-    }
+      StorageAndRetrievalManager::new(storage_node)
+  }
+async fn create_test_data() -> (BOC, ZkProof) {
+  // Function body goes here
+  let boc = BOC::new();
+  let proof = ZkProof::default();
+  (boc, proof)
+}
+    
 
     #[wasm_bindgen_test]    
     async fn test_storage_and_retrieval() {
