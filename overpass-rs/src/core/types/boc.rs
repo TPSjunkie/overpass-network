@@ -182,7 +182,31 @@ impl BOC {
             combined.extend_from_slice(&cell.data);
             combined.extend(cell.references.iter().flat_map(|x| x.to_le_bytes()));
         }
+ // This is for general data integrity/serialization
+    pub fn hash(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        
+        // Hash structure elements
+        for cell in &self.cells {
+            hasher.update(&cell.merkle_hash); // Note: this merkle_hash was computed using Poseidon
+            hasher.update(&cell.data);
+            for &ref_idx in &cell.references {
+                hasher.update(&ref_idx.to_le_bytes());
+            }
+        }
 
+        // Hash roots and references
+        for &root in &self.roots {
+            hasher.update(&root.to_le_bytes());
+        }
+        for &reference in &self.references {
+            hasher.update(&reference.to_le_bytes());
+        }
+
+        let mut hash = [0u8; 32];
+        hash.copy_from_slice(&hasher.finalize());
+        hash
+    }
         // Hash roots
         for root in &self.roots {
             combined.extend_from_slice(&root.to_le_bytes());
