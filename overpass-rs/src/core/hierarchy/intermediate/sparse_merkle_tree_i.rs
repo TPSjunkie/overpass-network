@@ -1,5 +1,6 @@
 use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::types::boc::{Cell, CellType, BOC};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
+use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
