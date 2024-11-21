@@ -9,10 +9,7 @@ use std::time::Duration as StdDuration;
 use parking_lot::RwLock;
 
 use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::storage_node::storage_node_contract::{
-    StorageNode, StorageNodeConfig, BatteryConfig, SyncConfig, 
-    EpidemicProtocolConfig, NetworkConfig
-};
+use crate::core::storage_node::storage_node_contract::*;
 use crate::core::zkps::plonky2::{Plonky2System, Plonky2SystemHandle};
 
 // Constants

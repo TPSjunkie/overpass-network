@@ -9,10 +9,9 @@ use js_sys::Promise;
 use serde::{Serialize, Deserialize};
 
 use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::storage_node::storage_node_contract::{
-    StorageNode, StorageNodeConfig, BatteryConfig, SyncConfig, 
-    EpidemicProtocolConfig, NetworkConfig
-};
+use crate::core::storage_node::battery::charging::BatteryConfig;
+use crate::core::storage_node::epidemic::sync::SyncConfig;
+use crate::core::storage_node::storage_node_contract::*;
 
 // Constants
 const MIN_CHALLENGE_THRESHOLD: u64 = 1;
@@ -68,9 +67,7 @@ pub struct ChallengeManager {
     challenge_interval: u64,
     active_challenges: Arc<RwLock<Vec<[u8; 32]>>>,
     challenge_details: Arc<RwLock<HashMap<[u8; 32], ChallengeDetails>>>,
-}
-
-impl ChallengeManager {
+}impl ChallengeManager {
     pub fn create(
         storage_node: Arc<StorageNode>,
         challenge_fee: u64,
@@ -228,14 +225,14 @@ impl ChallengeManagerWrapper {
         let node_id: [u8; 32] = node_id.try_into()
             .map_err(|_| JsValue::from_str("Invalid node ID length"))?;
 
-        let storage_node = Arc::new(StorageNode::new(
+        let storage_node = Arc::new(crate::core::storage_node::StorageNode::new(
             node_id,
             challenge_fee.try_into().unwrap(),
-            StorageNodeConfig::new(
-                BatteryConfig::default(),
-                SyncConfig::default(),
-                EpidemicProtocolConfig::default(), 
-                NetworkConfig::default(),
+            crate::core::storage_node::StorageNodeConfig::new(
+                crate::core::storage_node::BatteryConfig::default(),
+                crate::core::storage_node::SyncConfig::default(),
+                crate::core::storage_node::EpidemicProtocolConfig::default(), 
+                crate::core::storage_node::NetworkConfig::default(),
                 node_id,
                 challenge_fee as i64,
                 HashSet::new()
@@ -251,8 +248,8 @@ impl ChallengeManagerWrapper {
 
         Ok(ChallengeManagerWrapper(manager))
     }
-    pub async fn start_challenge(&self) -> Result<(), JsValue> {
-        self.0.start_challenge()
+
+    pub async fn start_challenge(&self) -> Result<(), JsValue> {        self.0.start_challenge()
             .await
             .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
     }

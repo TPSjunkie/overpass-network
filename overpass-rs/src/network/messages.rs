@@ -1,5 +1,5 @@
 // src/network/messages.rs
-use crate::core::types::ChallengeResponse;
+
 use js_sys::Date;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -40,7 +40,7 @@ pub enum NetworkMessage {
     /// A message used to request a challenge from a node.
     ChallengeRequest([u8; 32]),
     /// A message used to respond to a challenge request.
-    ChallengeResponse(ChallengeResponse),
+    ChallengeResponse(crate::network::NetworkMessage),
 }
 
 #[wasm_bindgen]

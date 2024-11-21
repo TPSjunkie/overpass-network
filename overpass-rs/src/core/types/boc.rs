@@ -173,7 +173,28 @@ impl BOC {
     pub fn new() -> Self {
         Self::default()
     }
+    pub fn hash(&self) -> [u8; 32] {
+        let mut combined = Vec::new();
 
+        // Hash cells data
+        for cell in &self.cells {
+            combined.extend_from_slice(&cell.merkle_hash);
+            combined.extend_from_slice(&cell.data);
+            combined.extend(cell.references.iter().flat_map(|x| x.to_le_bytes()));
+        }
+
+        // Hash roots
+        for root in &self.roots {
+            combined.extend_from_slice(&root.to_le_bytes());
+        }
+
+        // Hash references 
+        for reference in &self.references {
+            combined.extend_from_slice(&reference.to_le_bytes());
+        }
+
+        hash(&combined)
+    }
     pub fn add_cell(&mut self, data: Vec<u8>) -> Result<usize, SystemError> {
         let mut cell = Cell::with_data(data);
         cell.update_merkle_hash();
