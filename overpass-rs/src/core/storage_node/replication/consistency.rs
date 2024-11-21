@@ -136,7 +136,7 @@ where
         self.validate_consistency(state_hash, &proof, boc).await
     }
 
-    pub async fn verify_proof(&self, circuit: &Circuit) -> Result<(), SystemError> {
+    pub async fn verify_proof(&self, circuit: &Circuit<F, D>) -> Result<(), SystemError> {
         if self.force_verification_error.load(Ordering::SeqCst) {
             return Err(SystemError::new(
                 SystemErrorType::VerificationError, 
@@ -165,7 +165,6 @@ where
             ))
         }
     }
-
     pub fn get_state(&self) -> Result<ConsistencyState, SystemError> {
         Ok(ConsistencyState {
             total_checks: self.metrics.read().total_consistency_checks,
