@@ -136,7 +136,7 @@ where
         self.validate_consistency(state_hash, &proof, boc).await
     }
 
-    pub async fn verify_proof(&self, circuit: &Circuit<F, D>) -> Result<(), SystemError> {
+    pub async fn verify_proof(&self, circuit: &Circuit<Fnn{ , } D>) -> Result<(), SystemError> {
         if self.force_verification_error.load(Ordering::SeqCst) {
             return Err(SystemError::new(
                 SystemErrorType::VerificationError, 
@@ -223,6 +223,7 @@ mod tests {
             cells: vec![],
             references: vec![],
             roots: vec![],
+            hash: todo!(),
         }
     }
 
