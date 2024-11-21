@@ -320,6 +320,7 @@ mod tests {
             cells: vec![],
             references: vec![],
             roots: vec![],
+            hash: todo!(),
         }
     }
 
