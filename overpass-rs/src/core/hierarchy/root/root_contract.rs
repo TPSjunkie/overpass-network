@@ -2,12 +2,12 @@
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::hierarchy::client::wallet_extension::wallet_extension_types::Transaction;
 use crate::core::hierarchy::root::sparse_merkle_tree_r::SparseMerkleTreeR;
-use crate::core::types::boc::{Cell, CellType, BOC};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
+use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::hash::merkle_proofs::MerkleProof;
 use plonky2::hash::poseidon::PoseidonHash;
 use std::collections::HashMap;
-
 pub struct RootContract {
     global_tree: SparseMerkleTreeR,
     intermediate_roots: HashMap<Address, Hash>,
