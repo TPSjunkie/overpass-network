@@ -2,7 +2,6 @@
 
 pub mod consistency;
 pub mod distribution;
-pub mod verification;
 pub mod state;
+pub mod verification;
 // Re-exporting for ease of access
-

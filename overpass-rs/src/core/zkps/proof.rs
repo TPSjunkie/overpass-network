@@ -32,7 +32,6 @@ pub struct ProofMetadata {
     pub(crate) height_bounds: (u64, u64),
 }
 
-
 // Bundle of proof with its metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProofBundle {

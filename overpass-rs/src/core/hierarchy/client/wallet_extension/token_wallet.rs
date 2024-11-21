@@ -1,5 +1,5 @@
-use crate::core::hierarchy::client::wallet_extension::token_oc_data::TokenOCData;
 use crate::core::hierarchy::client::transaction::transaction_oc_data::TransactionOCData;
+use crate::core::hierarchy::client::wallet_extension::token_oc_data::TokenOCData;
 
 pub struct TokenWallet {
     token_oc_data: Option<TokenOCData>,

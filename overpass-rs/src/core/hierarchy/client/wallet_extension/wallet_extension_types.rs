@@ -141,7 +141,8 @@ impl Default for Transaction {
             new_state: Vec::new(),
             fee: 0,
         }
-    }}
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum TransactionStatus {
@@ -246,10 +247,7 @@ pub struct WalletExtensionStateChange {
 pub struct WalletExtensionConfig {
     pub channel_config: ChannelConfig,
     pub spending_limit: u64,
-}   
-
-
-
+}
 
 pub struct Channel {
     pub channel_id: [u8; 32],
@@ -299,4 +297,3 @@ impl Default for StateTransition {
         }
     }
 }
-

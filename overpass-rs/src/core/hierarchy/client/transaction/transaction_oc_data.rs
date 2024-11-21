@@ -1,9 +1,9 @@
 // ./src/core/hierarchy/client/transaction/transaction_oc_data.rs
 
+use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
 use crate::core::hierarchy::client::transaction::transaction_types::TransactionType;
 use crate::core::hierarchy::client::wallet_extension::wallet_extension_types::WalletExtension;
 use crate::core::zkps::proof::ZkProof;
-use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
 use std::sync::{Arc, RwLock};
 
 /// Represents a transaction in the Overpass Channels system

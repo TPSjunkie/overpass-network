@@ -1,15 +1,20 @@
-use std::sync::Arc;
+use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::core::storage_node::storage_node_config::{
+    BatteryConfig, EpidemicProtocolConfig, NetworkConfig, StorageNodeConfig, SyncConfig,
+};
+use crate::core::storage_node::storage_node_contract::StorageNode;
+use crate::core::types::boc::BOC;
+use crate::core::zkps::circuit_builder::{Circuit, ZkCircuitBuilder};
+use crate::core::zkps::proof::ZkProof;
+use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::hash::hash_types::RichField;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::extension::Extendable;
-use serde::{Serialize, Deserialize};
-use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::types::boc::BOC;
-use crate::core::zkps::proof::ZkProof;
-use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit}; 
-use crate::core::storage_node::storage_node_contract::{StorageAndRetrievalMetrics, StorageAndRetrievalManager};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalStorageAndRetrievalMetrics {
+pub struct StorageAndRetrievalMetrics {
     pub store_boc: u64,
     pub store_proof: u64,
     pub retrieve_boc: u64,
@@ -19,7 +24,7 @@ pub struct LocalStorageAndRetrievalMetrics {
     pub verification_failure: u64,
 }
 
-impl Default for LocalStorageAndRetrievalMetrics {
+impl Default for StorageAndRetrievalMetrics {
     fn default() -> Self {
         Self {
             store_boc: 0,
@@ -33,12 +38,12 @@ impl Default for LocalStorageAndRetrievalMetrics {
     }
 }
 
-pub struct LocalStorageAndRetrievalManager<F: RichField + Extendable<2>> {
+pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>> {
     storage_node: Arc<StorageNode>,
-    metrics: LocalStorageAndRetrievalMetrics,
+    metrics: StorageAndRetrievalMetrics,
     store_boc: bool,
     store_proof: bool,
-    retrieve_boc: bool,  
+    retrieve_boc: bool,
     retrieve_proof: bool,
     verify_proof: bool,
     circuit_config: CircuitConfig,
@@ -49,13 +54,13 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub fn new(storage_node: Arc<StorageNode>) -> Self {
         Self {
             storage_node,
-            metrics: LocalStorageAndRetrievalMetrics::default(),
+            metrics: StorageAndRetrievalMetrics::default(),
             store_boc: true,
             store_proof: true,
             retrieve_boc: true,
             retrieve_proof: true,
             verify_proof: true,
-            circuit_config: CircuitConfig::default(),
+            circuit_config: CircuitConfig::standard_recursion_config(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -68,7 +73,6 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
             ));
         }
 
-        // Verify the proof before storing if enabled
         if self.verify_proof {
             self.verify_proof(&proof).await?;
         }
@@ -102,17 +106,17 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
             ));
         }
 
-        let boc = self.storage_node
+        let boc = self
+            .storage_node
             .stored_bocs
             .lock()
             .await
             .get(boc_id)
             .cloned()
-            .ok_or_else(|| SystemError::new(
-                SystemErrorType::StorageError,
-                "BOC not found".to_string()
-            ))?;
-        
+            .ok_or_else(|| {
+                SystemError::new(SystemErrorType::StorageError, "BOC not found".to_string())
+            })?;
+
         self.metrics.retrieve_boc += 1;
         Ok(boc)
     }
@@ -125,16 +129,16 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
             ));
         }
 
-        let proof = self.storage_node
+        let proof = self
+            .storage_node
             .stored_proofs
             .lock()
             .await
             .get(proof_id)
             .cloned()
-            .ok_or_else(|| SystemError::new(
-                SystemErrorType::StorageError,
-                "Proof not found".to_string()
-            ))?;
+            .ok_or_else(|| {
+                SystemError::new(SystemErrorType::StorageError, "Proof not found".to_string())
+            })?;
 
         self.metrics.retrieve_proof += 1;
         Ok(proof)
@@ -151,19 +155,21 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
         self.metrics.verification_count += 1;
 
         let mut circuit_builder = ZkCircuitBuilder::<F, 2>::new(self.circuit_config.clone());
-        
-        let circuit = circuit_builder.build_verification_circuit(proof).map_err(|e| {
-            self.metrics.verification_failure += 1;
-            SystemError::new(
-                SystemErrorType::CircuitError,
-                format!("Failed to build verification circuit: {:?}", e),
-            )
-        })?;
+
+        let circuit = circuit_builder
+            .build_verification_circuit(proof)
+            .map_err(|e| {
+                self.metrics.verification_failure += 1;
+                SystemError::new(
+                    SystemErrorType::CircuitError,
+                    format!("Failed to build verification circuit: {:?}", e),
+                )
+            })?;
 
         let result = circuit.verify_proof(proof).map_err(|e| {
             self.metrics.verification_failure += 1;
             SystemError::new(
-                SystemErrorType::VerificationError,  
+                SystemErrorType::VerificationError,
                 format!("Proof verification failed: {:?}", e),
             )
         })?;
@@ -177,7 +183,6 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
         Ok(result)
     }
 
-    // Configuration methods
     pub fn get_metrics(&self) -> StorageAndRetrievalMetrics {
         self.metrics.clone()
     }
@@ -214,9 +219,6 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::storage_node::storage_node_contract::{
-      
-    };
     use std::collections::HashSet;
     use wasm_bindgen_test::*;
 
@@ -225,43 +227,44 @@ mod tests {
     type F = GoldilocksField;
 
     async fn setup_storage_and_retrieval() -> StorageAndRetrievalManager<F> {
-        let storage_node = Arc::new(StorageNode::new(
-            [0u8; 32],
-            0,
-            StorageNodeConfig {
-                battery_config: BatteryConfig::default(),
-                sync_config: SyncConfig::default(),
-                epidemic_protocol_config: EpidemicProtocolConfig::default(),
-                network_config: NetworkConfig::default(),
-                node_id: [0u8; 32],
-                fee: 0,
-                whitelist: HashSet::new(),
-            },
-        ).unwrap());
+        let storage_node = Arc::new(
+            StorageNode::new(
+                [0u8; 32],
+                0,
+                StorageNodeConfig {
+                    battery_config: BatteryConfig::default(),
+                    sync_config: SyncConfig::default(),
+                    epidemic_protocol_config: EpidemicProtocolConfig::default(),
+                    network_config: NetworkConfig::default(),
+                    node_id: [0u8; 32],
+                    fee: 0,
+                    whitelist: HashSet::new(),
+                },
+            )
+            .unwrap(),
+        );
 
         StorageAndRetrievalManager::new(storage_node)
     }
 
     async fn create_test_data() -> (BOC, ZkProof) {
         let boc = BOC::new();
-        let proof = ZkProof::default();
+        let proof = ZkProof::new_test();
         (boc, proof)
     }
 
-    #[wasm_bindgen_test]    
+    #[wasm_bindgen_test]
     async fn test_storage_and_retrieval() {
         let mut manager = setup_storage_and_retrieval().await;
         let (boc, proof) = create_test_data().await;
-        
-        // Test storage
+
         let result = manager.store_data(boc.clone(), proof.clone()).await;
         assert!(result.is_ok());
-        
-        // Test retrieval
+
         let retrieved_boc = manager.retrieve_data(&boc.hash()).await;
         assert!(retrieved_boc.is_ok());
         assert_eq!(retrieved_boc.unwrap().hash(), boc.hash());
-        
+
         let retrieved_proof = manager.retrieve_proof(&proof.hash()).await;
         assert!(retrieved_proof.is_ok());
         assert_eq!(retrieved_proof.unwrap().hash(), proof.hash());
@@ -270,19 +273,17 @@ mod tests {
     #[wasm_bindgen_test]
     async fn test_error_handling() {
         let mut manager = setup_storage_and_retrieval().await;
-        
-        // Test disabled operations
+
         manager.set_store_boc(false);
         manager.set_store_proof(false);
-        
+
         let (boc, proof) = create_test_data().await;
         let result = manager.store_data(boc, proof).await;
         assert!(result.is_err());
-        
-        // Test not found errors
+
         let result = manager.retrieve_data(&[1u8; 32]).await;
         assert!(result.is_err());
-        
+
         let result = manager.retrieve_proof(&[1u8; 32]).await;
         assert!(result.is_err());
     }
@@ -291,10 +292,10 @@ mod tests {
     async fn test_verification() {
         let mut manager = setup_storage_and_retrieval().await;
         let (_, proof) = create_test_data().await;
-        
+
         let result = manager.verify_proof(&proof).await;
         assert!(result.is_ok());
-        
+
         let metrics = manager.get_metrics();
         assert!(metrics.verification_count > 0);
         assert!(metrics.verification_success > 0);
@@ -304,17 +305,21 @@ mod tests {
     async fn test_metrics() {
         let mut manager = setup_storage_and_retrieval().await;
         let (boc, proof) = create_test_data().await;
-        
-        manager.store_data(boc.clone(), proof.clone()).await.unwrap();
+
+        manager
+            .store_data(boc.clone(), proof.clone())
+            .await
+            .unwrap();
         manager.retrieve_data(&boc.hash()).await.unwrap();
         manager.retrieve_proof(&proof.hash()).await.unwrap();
         manager.verify_proof(&proof).await.unwrap();
-        
+
         let metrics = manager.get_metrics();
         assert_eq!(metrics.store_boc, 1);
         assert_eq!(metrics.store_proof, 1);
         assert_eq!(metrics.retrieve_boc, 1);
         assert_eq!(metrics.retrieve_proof, 1);
         assert!(metrics.verification_count > 0);
+        assert!(metrics.verification_success > 0);
     }
 }

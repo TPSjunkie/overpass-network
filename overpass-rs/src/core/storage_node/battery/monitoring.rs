@@ -1,28 +1,28 @@
-use std::sync::Arc;
-use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet};
-use web_sys::window;
-use wasm_bindgen_futures::spawn_local;
-use serde::{Serialize, Deserialize};
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::storage_node::battery::charging::BatteryChargingSystem;
 use crate::core::storage_node::epidemic::overlap::StorageOverlapManager;
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::window;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageState {
-    Unknown,        // Never seen the message
-    Seen,          // Received but not propagated
-    Propagating,   // Currently propagating
-    Propagated,    // Successfully propagated
-    Failed,        // Failed to propagate
+    Unknown,     // Never seen the message
+    Seen,        // Received but not propagated
+    Propagating, // Currently propagating
+    Propagated,  // Successfully propagated
+    Failed,      // Failed to propagate
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub enum MessagePriority {
-    Critical = 0,   // Must propagate immediately
-    High = 1,       // Should propagate soon
-    Medium = 2,     // Normal priority
-    Low = 3,        // Propagate when convenient
+    Critical = 0, // Must propagate immediately
+    High = 1,     // Should propagate soon
+    Medium = 2,   // Normal priority
+    Low = 3,      // Propagate when convenient
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub struct PropagationMessage {
     pub priority: MessagePriority,
     pub timestamp: u64,
     pub ttl: u32,
-    pub battery_requirement: u64,  // Minimum battery needed
+    pub battery_requirement: u64, // Minimum battery needed
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,16 +66,16 @@ impl Default for PropagationMetrics {
 pub struct EpidemicPropagation {
     battery_system: Arc<BatteryChargingSystem>,
     overlap_manager: Arc<StorageOverlapManager>,
-    
+
     message_states: RwLock<HashMap<[u8; 32], MessageState>>,
     active_messages: RwLock<HashMap<[u8; 32], PropagationMessage>>,
     seen_messages: RwLock<HashSet<[u8; 32]>>,
-    
+
     peer_success_rates: RwLock<HashMap<[u8; 32], f64>>,
     peer_last_propagation: RwLock<HashMap<[u8; 32], u64>>,
-    
+
     metrics: RwLock<PropagationMetrics>,
-    
+
     min_battery_levels: HashMap<MessagePriority, u64>,
     max_active_propagations: usize,
     propagation_timeout: u64,
@@ -88,10 +88,10 @@ impl EpidemicPropagation {
         overlap_manager: Arc<StorageOverlapManager>,
     ) -> Self {
         let mut min_battery_levels = HashMap::new();
-        min_battery_levels.insert(MessagePriority::Critical, 5);  
-        min_battery_levels.insert(MessagePriority::High, 20);     
-        min_battery_levels.insert(MessagePriority::Medium, 40);   
-        min_battery_levels.insert(MessagePriority::Low, 60);     
+        min_battery_levels.insert(MessagePriority::Critical, 5);
+        min_battery_levels.insert(MessagePriority::High, 20);
+        min_battery_levels.insert(MessagePriority::Medium, 40);
+        min_battery_levels.insert(MessagePriority::Low, 60);
 
         Self {
             battery_system,
@@ -117,24 +117,28 @@ impl EpidemicPropagation {
         self.metrics.write().messages_seen += 1;
 
         let battery_level = self.battery_system.get_charge_percentage();
-        let min_battery = *self.min_battery_levels.get(&message.priority)
-            .ok_or_else(|| SystemError::new(
-                SystemErrorType::InvalidInput,
-                "Invalid message priority".to_string()
-            ))?;
+        let min_battery = *self
+            .min_battery_levels
+            .get(&message.priority)
+            .ok_or_else(|| {
+                SystemError::new(
+                    SystemErrorType::InvalidInput,
+                    "Invalid message priority".to_string(),
+                )
+            })?;
 
         if battery_level < min_battery as f64 {
             self.metrics.write().battery_rejections += 1;
             return Err(SystemError::new(
                 SystemErrorType::InvalidInput,
-                "Insufficient battery for propagation".to_string()
+                "Insufficient battery for propagation".to_string(),
             ));
         }
 
         if self.active_messages.read().len() >= self.max_active_propagations {
             return Err(SystemError::new(
                 SystemErrorType::InvalidInput,
-                "Maximum active propagations reached".to_string()
+                "Maximum active propagations reached".to_string(),
             ));
         }
 
@@ -142,8 +146,12 @@ impl EpidemicPropagation {
     }
 
     async fn start_propagation(&self, message: PropagationMessage) -> Result<(), SystemError> {
-        self.message_states.write().insert(message.id, MessageState::Propagating);
-        self.active_messages.write().insert(message.id, message.clone());
+        self.message_states
+            .write()
+            .insert(message.id, MessageState::Propagating);
+        self.active_messages
+            .write()
+            .insert(message.id, message.clone());
         self.metrics.write().active_propagations += 1;
 
         let sync_peers = self.overlap_manager.get_synchronized_nodes();
@@ -172,17 +180,23 @@ impl EpidemicPropagation {
             let elapsed = window().unwrap().performance().unwrap().now() - start_time;
             metrics.successful_peers += successful_peers;
             metrics.failed_peers += failed_peers;
-            
+
             let total_propagations = metrics.messages_propagated;
-            metrics.average_propagation_time = 
-                (metrics.average_propagation_time * total_propagations as f64 + elapsed) /
-                (total_propagations + 1) as f64;
+            metrics.average_propagation_time =
+                (metrics.average_propagation_time * total_propagations as f64 + elapsed)
+                    / (total_propagations + 1) as f64;
 
             if successful_peers > 0 {
-                propagation.message_states.write().insert(message.id, MessageState::Propagated);
+                propagation
+                    .message_states
+                    .write()
+                    .insert(message.id, MessageState::Propagated);
                 metrics.messages_propagated += 1;
             } else {
-                propagation.message_states.write().insert(message.id, MessageState::Failed);
+                propagation
+                    .message_states
+                    .write()
+                    .insert(message.id, MessageState::Failed);
                 metrics.messages_failed += 1;
             }
 
@@ -193,37 +207,51 @@ impl EpidemicPropagation {
         Ok(())
     }
 
-    async fn select_propagation_targets(&self, peers: &HashSet<[u8; 32]>) -> Result<Vec<[u8; 32]>, SystemError> {
+    async fn select_propagation_targets(
+        &self,
+        peers: &HashSet<[u8; 32]>,
+    ) -> Result<Vec<[u8; 32]>, SystemError> {
         let mut selected_peers = Vec::new();
         let success_rates = self.peer_success_rates.read();
-        
-        let mut scored_peers: Vec<_> = peers.iter().map(|peer| {
-            let success_rate = success_rates.get(peer).copied().unwrap_or(1.0);
-            let sync_score = self.overlap_manager.calculate_sync_boost(peer);
-            (*peer, success_rate * sync_score as f64)
-        }).collect();
+
+        let mut scored_peers: Vec<_> = peers
+            .iter()
+            .map(|peer| {
+                let success_rate = success_rates.get(peer).copied().unwrap_or(1.0);
+                let sync_score = self.overlap_manager.calculate_sync_boost(peer);
+                (*peer, success_rate * sync_score as f64)
+            })
+            .collect();
 
         scored_peers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        
+
         for (peer, _) in scored_peers.iter().take(3) {
             selected_peers.push(*peer);
         }
-        
+
         Ok(selected_peers)
     }
 
-    async fn propagate_to_peer(&self, message: &PropagationMessage, peer: &[u8; 32]) -> Result<(), SystemError> {
+    async fn propagate_to_peer(
+        &self,
+        message: &PropagationMessage,
+        peer: &[u8; 32],
+    ) -> Result<(), SystemError> {
         let battery_level = self.battery_system.get_charge_percentage();
-        let min_battery = *self.min_battery_levels.get(&message.priority)
-            .ok_or_else(|| SystemError::new(
-                SystemErrorType::InvalidInput,
-                "Invalid message priority".to_string()
-            ))?;
+        let min_battery = *self
+            .min_battery_levels
+            .get(&message.priority)
+            .ok_or_else(|| {
+                SystemError::new(
+                    SystemErrorType::InvalidInput,
+                    "Invalid message priority".to_string(),
+                )
+            })?;
 
         if battery_level < min_battery as f64 {
             return Err(SystemError::new(
                 SystemErrorType::InvalidInput,
-                "Insufficient battery for peer propagation".to_string()
+                "Insufficient battery for peer propagation".to_string(),
             ));
         }
 
@@ -240,9 +268,10 @@ impl EpidemicPropagation {
             current_rate * 0.9
         };
         success_rates.insert(*peer, new_rate);
-        
-        self.peer_last_propagation.write().insert(*peer, 
-            window().unwrap().performance().unwrap().now() as u64);
+
+        self.peer_last_propagation
+            .write()
+            .insert(*peer, window().unwrap().performance().unwrap().now() as u64);
     }
 
     pub fn get_metrics(&self) -> PropagationMetrics {
@@ -250,7 +279,8 @@ impl EpidemicPropagation {
     }
 
     pub fn get_message_state(&self, message_id: &[u8; 32]) -> MessageState {
-        self.message_states.read()
+        self.message_states
+            .read()
             .get(message_id)
             .copied()
             .unwrap_or(MessageState::Unknown)
@@ -279,7 +309,7 @@ impl Clone for EpidemicPropagation {
 mod tests {
     use super::*;
     use wasm_bindgen_test::*;
-    
+
     wasm_bindgen_test_configure!(run_in_browser);
 
     fn create_test_message(priority: MessagePriority) -> PropagationMessage {
@@ -304,17 +334,17 @@ mod tests {
     async fn test_message_handling() {
         let propagation = setup_propagation().await;
         let message = create_test_message(MessagePriority::High);
-        
+
         let result = propagation.handle_message(message.clone()).await;
         assert!(result.is_ok());
-        
+
         assert_eq!(
             propagation.get_message_state(&message.id),
             MessageState::Propagating
         );
     }
 
-#[wasm_bindgen_test]
+    #[wasm_bindgen_test]
     async fn test_propagation_timeout() {
         let propagation = setup_propagation().await;
         let message = create_test_message(MessagePriority::Medium);
@@ -326,14 +356,14 @@ mod tests {
         assert_eq!(metrics.messages_failed, 1);
     }
 
-   #[wasm_bindgen_test]
+    #[wasm_bindgen_test]
     async fn test_duplicate_messages() {
         let propagation = setup_propagation().await;
         let message = create_test_message(MessagePriority::Medium);
-        
+
         propagation.handle_message(message.clone()).await.unwrap();
         propagation.handle_message(message.clone()).await.unwrap();
-        
+
         let metrics = propagation.get_metrics();
         assert_eq!(metrics.messages_seen, 1);
     }
@@ -342,10 +372,15 @@ mod tests {
     async fn test_peer_success_tracking() {
         let propagation = setup_propagation().await;
         let peer = [1u8; 32];
-        
+
         propagation.update_peer_success(&peer, true).await;
-        
-        let success_rate = propagation.peer_success_rates.read().get(&peer).copied().unwrap();
+
+        let success_rate = propagation
+            .peer_success_rates
+            .read()
+            .get(&peer)
+            .copied()
+            .unwrap();
         assert!(success_rate > 0.0);
     }
 }

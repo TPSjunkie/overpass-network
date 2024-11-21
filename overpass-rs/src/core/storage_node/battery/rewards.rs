@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use parking_lot::RwLock;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::storage_node::battery::charging::BatteryChargingSystem;
@@ -9,20 +9,20 @@ use crate::core::storage_node::epidemic::overlap::StorageOverlapManager;
 // Reward tiers based on battery level and performance
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RewardTier {
-    Optimal,    // 98-100% battery, high overlap
-    High,       // 80-97% battery, good overlap
-    Base,       // 60-79% battery, minimal overlap
-    Reduced,    // Below 60% battery
-    None        // Suspended or insufficient metrics
+    Optimal, // 98-100% battery, high overlap
+    High,    // 80-97% battery, good overlap
+    Base,    // 60-79% battery, minimal overlap
+    Reduced, // Below 60% battery
+    None,    // Suspended or insufficient metrics
 }
 
 // Reward multipliers for different activities
 #[derive(Clone)]
 pub struct RewardMultipliers {
     pub storage_multiplier: f64,      // For storing state/proofs
-    pub verification_multiplier: f64,  // For verifying proofs
-    pub propagation_multiplier: f64,   // For propagating messages
-    pub overlap_multiplier: f64,       // Based on overlap score
+    pub verification_multiplier: f64, // For verifying proofs
+    pub propagation_multiplier: f64,  // For propagating messages
+    pub overlap_multiplier: f64,      // Based on overlap score
     pub sync_multiplier: f64,         // Based on sync score
 }
 
@@ -120,8 +120,8 @@ impl RewardDistributor {
             overlap_manager,
             multipliers,
             metrics: Arc::new(RwLock::new(RewardMetrics::default())),
-            min_overlap_score: 0.8,  // 80% minimum overlap for bonuses
-            min_sync_score: 0.7,     // 70% minimum sync for bonuses
+            min_overlap_score: 0.8, // 80% minimum overlap for bonuses
+            min_sync_score: 0.7,    // 70% minimum sync for bonuses
         }
     }
 
@@ -129,7 +129,7 @@ impl RewardDistributor {
     pub fn calculate_reward_tier(&self) -> RewardTier {
         let battery_level = self.battery_system.get_charge_percentage();
         let overlap_score = self.overlap_manager.get_overlap_score();
-        
+
         if self.battery_system.is_suspended() {
             return RewardTier::None;
         }
@@ -158,16 +158,14 @@ impl RewardDistributor {
     pub async fn calculate_storage_reward(
         &self,
         data_size: u64,
-        duration: u64
+        duration: u64,
     ) -> Result<u64, SystemError> {
         let tier = self.calculate_reward_tier();
         if tier == RewardTier::None {
             return Ok(0);
         }
 
-        let base_reward = data_size
-            .saturating_mul(duration)
-            .saturating_div(1024); // Normalize by KB
+        let base_reward = data_size.saturating_mul(duration).saturating_div(1024); // Normalize by KB
 
         let tier_multiplier = Self::get_tier_multiplier(tier);
         let overlap_bonus = if self.overlap_manager.get_overlap_score() >= self.min_overlap_score {
@@ -176,9 +174,9 @@ impl RewardDistributor {
             1.0
         };
 
-        let final_reward = (base_reward as f64 
-            * tier_multiplier 
-            * self.multipliers.storage_multiplier 
+        let final_reward = (base_reward as f64
+            * tier_multiplier
+            * self.multipliers.storage_multiplier
             * overlap_bonus) as u64;
 
         // Update metrics
@@ -193,7 +191,7 @@ impl RewardDistributor {
     // Calculate rewards for verification work
     pub async fn calculate_verification_reward(
         &self,
-        proof_complexity: u64
+        proof_complexity: u64,
     ) -> Result<u64, SystemError> {
         let tier = self.calculate_reward_tier();
         if tier == RewardTier::None {
@@ -202,9 +200,9 @@ impl RewardDistributor {
 
         let base_reward = proof_complexity.saturating_mul(100); // Base reward per complexity unit
         let tier_multiplier = Self::get_tier_multiplier(tier);
-        
-        let final_reward = (base_reward as f64 
-            * tier_multiplier 
+
+        let final_reward = (base_reward as f64
+            * tier_multiplier
             * self.multipliers.verification_multiplier) as u64;
 
         // Update metrics
@@ -220,7 +218,7 @@ impl RewardDistributor {
     pub async fn calculate_propagation_reward(
         &self,
         message_count: u64,
-        priority_level: u8
+        priority_level: u8,
     ) -> Result<u64, SystemError> {
         let tier = self.calculate_reward_tier();
         if tier == RewardTier::None {
@@ -237,9 +235,9 @@ impl RewardDistributor {
             1.0
         };
 
-        let final_reward = (base_reward as f64 
-            * tier_multiplier 
-            * self.multipliers.propagation_multiplier 
+        let final_reward = (base_reward as f64
+            * tier_multiplier
+            * self.multipliers.propagation_multiplier
             * priority_multiplier
             * sync_bonus) as u64;
 
@@ -257,10 +255,10 @@ impl RewardDistributor {
         let mut metrics = self.metrics.write();
         let tier = self.calculate_reward_tier();
         let tier_multiplier = Self::get_tier_multiplier(tier);
-        
+
         let overlap_score = self.overlap_manager.get_overlap_score();
         let sync_score = self.overlap_manager.get_sync_score();
-        
+
         // Calculate performance factors
         let overlap_factor = if overlap_score >= self.min_overlap_score {
             overlap_score
@@ -296,30 +294,37 @@ mod tests {
         let battery_system = Arc::new(BatteryChargingSystem::new(Default::default()));
         let overlap_manager = Arc::new(StorageOverlapManager::new(0.8, 3));
         let multipliers = RewardMultipliers::default();
-        
+
         RewardDistributor::new(battery_system, overlap_manager, multipliers)
     }
 
     #[wasm_bindgen_test]
     async fn test_reward_tiers() {
         let mut distributor = setup_distributor().await;
-        
+
         // Test optimal conditions
         assert_eq!(distributor.calculate_reward_tier(), RewardTier::Optimal);
-        
+
         // Test reduced battery
-        Arc::get_mut(&mut distributor.battery_system).unwrap().consume_charge(50).await.unwrap();
+        Arc::get_mut(&mut distributor.battery_system)
+            .unwrap()
+            .consume_charge(50)
+            .await
+            .unwrap();
         assert_eq!(distributor.calculate_reward_tier(), RewardTier::Reduced);
     }
 
     #[wasm_bindgen_test]
     async fn test_storage_rewards() {
         let distributor = setup_distributor().await;
-        
+
         // Test reward calculation
-        let reward = distributor.calculate_storage_reward(1024, 3600).await.unwrap();
+        let reward = distributor
+            .calculate_storage_reward(1024, 3600)
+            .await
+            .unwrap();
         assert!(reward > 0);
-        
+
         // Verify metrics
         let metrics = distributor.get_metrics();
         assert_eq!(metrics.storage_rewards, reward);
@@ -328,11 +333,11 @@ mod tests {
     #[wasm_bindgen_test]
     async fn test_verification_rewards() {
         let distributor = setup_distributor().await;
-        
+
         // Test reward calculation
         let reward = distributor.calculate_verification_reward(10).await.unwrap();
         assert!(reward > 0);
-        
+
         // Verify metrics
         let metrics = distributor.get_metrics();
         assert_eq!(metrics.verification_rewards, reward);
@@ -341,11 +346,14 @@ mod tests {
     #[wasm_bindgen_test]
     async fn test_propagation_rewards() {
         let distributor = setup_distributor().await;
-        
+
         // Test reward calculation
-        let reward = distributor.calculate_propagation_reward(5, 2).await.unwrap();
+        let reward = distributor
+            .calculate_propagation_reward(5, 2)
+            .await
+            .unwrap();
         assert!(reward > 0);
-        
+
         // Verify metrics
         let metrics = distributor.get_metrics();
         assert_eq!(metrics.propagation_rewards, reward);

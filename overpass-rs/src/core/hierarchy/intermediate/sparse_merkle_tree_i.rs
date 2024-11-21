@@ -211,13 +211,7 @@ impl SparseMerkleTreeI {
             if let Some(right) = node.right {
                 node_data.extend_from_slice(&right);
             }
-            let cell = Cell::new(
-                node_data,
-                vec![],
-                CellType::Ordinary,
-                *hash,
-                None,
-            );
+            let cell = Cell::new(node_data, vec![], CellType::Ordinary, *hash, None);
             node_cells.push(cell);
         }
 

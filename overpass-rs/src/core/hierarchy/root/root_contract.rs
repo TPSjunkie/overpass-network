@@ -1,8 +1,8 @@
 // root_contract.rs
 use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
 use crate::core::hierarchy::client::wallet_extension::wallet_extension_types::Transaction;
 use crate::core::hierarchy::root::sparse_merkle_tree_r::SparseMerkleTreeR;
-use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
 use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::hash::merkle_proofs::MerkleProof;
@@ -83,7 +83,7 @@ impl RootContract {
     ) -> Result<bool, String> {
         if !self.verify_transaction_state {
             return Ok(false);
-        }   
+        }
         Ok(true)
     }
     pub fn deserialize(boc: BOC) -> Result<Self, SystemError> {

@@ -1,12 +1,12 @@
+use crate::core::error::errors::{SystemError, SystemErrorType};
 use serde::{Deserialize, Serialize};
-use crate::core::error::errors::SystemError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BOC {
     pub cells: Vec<Vec<u8>>,
-    pub references: Vec<Vec<u8>>, 
+    pub references: Vec<Vec<u8>>,
     pub roots: Vec<Vec<u8>>,
-    pub hash: Option<[u8; 32]>
+    pub hash: Option<[u8; 32]>,
 }
 
 impl BOC {
@@ -15,7 +15,7 @@ impl BOC {
             cells: Vec::new(),
             references: Vec::new(),
             roots: Vec::new(),
-            hash: None
+            hash: None,
         }
     }
 
@@ -26,7 +26,7 @@ impl BOC {
 
     pub fn with_cells(mut self, cells: Vec<Vec<u8>>) -> Self {
         self.cells = cells;
-        self 
+        self
     }
 
     pub fn with_references(mut self, references: Vec<Vec<u8>>) -> Self {
@@ -48,7 +48,7 @@ impl BOC {
     }
 
     pub fn references(&self) -> &Vec<Vec<u8>> {
-        &self.references  
+        &self.references
     }
 
     pub fn roots(&self) -> &Vec<Vec<u8>> {
@@ -72,17 +72,19 @@ impl BOC {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, SystemError> {
-        bincode::serialize(self).map_err(|e| SystemError::serialization_error(e.to_string()))
+        bincode::serialize(self)
+            .map_err(|e| SystemError::new(SystemErrorType::SerializationError, e.to_string()))
     }
 
     pub fn deserialize(data: &[u8]) -> Result<Self, SystemError> {
-        bincode::deserialize(data).map_err(|e| SystemError::deserialization_error(e.to_string()))
+        bincode::deserialize(data)
+            .map_err(|e| SystemError::new(SystemErrorType::SerializationError, e.to_string()))
     }
 
     pub fn compute_hash(&self) -> [u8; 32] {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        
+
         // Hash cells
         for cell in &self.cells {
             hasher.update(cell);

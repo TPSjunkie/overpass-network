@@ -1,11 +1,11 @@
 // ./src/core/hierarchy/client/wallet_extension/token_oc_data.rs
-use serde::{Deserialize, Serialize};
 use crate::core::hierarchy::client::wallet_extension::client_proof_exporter::ProofMetadata;
+use crate::core::hierarchy::client::wallet_extension::client_proof_exporter::*;
 use crate::core::hierarchy::client::wallet_extension::user::User;
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use crate::core::hierarchy::client::wallet_extension::client_proof_exporter::*;
 
 pub enum TokenOC {
     TokenOCData(TokenOCData),
@@ -26,7 +26,8 @@ pub struct TokenOCData {
 impl<'de> Deserialize<'de> for TokenOCData {
     fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
+        D: serde::Deserializer<'de>,
+    {
         todo!()
     }
 }
@@ -62,7 +63,15 @@ impl TokenOCData {
     pub fn export_proof_boc(&self) -> Result<BOC, String> {
         let mut data = Vec::new();
         data.extend_from_slice(&self.wallet_root);
-        data.extend_from_slice(&self.proof.public_inputs.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>());        data.extend_from_slice(&self.proof.merkle_root);
+        data.extend_from_slice(
+            &self
+                .proof
+                .public_inputs
+                .iter()
+                .flat_map(|x| x.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        data.extend_from_slice(&self.proof.merkle_root);
         data.extend_from_slice(&self.proof.proof_data);
         data.extend_from_slice(&self.metadata.timestamp.to_le_bytes());
         data.extend_from_slice(&self.metadata.nonce.to_le_bytes());
@@ -72,7 +81,7 @@ impl TokenOCData {
         let mut hasher = Sha256::new();
         hasher.update(&data);
         let _hash = hasher.finalize();
-        
+
         Ok(BOC::new())
     }
 }

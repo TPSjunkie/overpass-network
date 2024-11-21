@@ -1,28 +1,28 @@
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use web_sys::window;
 use parking_lot::RwLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use web_sys::window;
 
 use crate::core::error::errors::SystemErrorType;
 
 #[derive(Clone)]
 pub struct BatteryConfig {
     // Core battery parameters
-    pub max_charge: u64,            // 100%
-    pub optimal_threshold: u64,     // 98% - for maximum rewards
-    pub high_threshold: u64,        // 80% - for partial rewards
-    pub min_capacity: u64,          // Minimum required for operation
-    pub suspension_threshold: u64,   // 0% - node gets suspended
-    
+    pub max_charge: u64,           // 100%
+    pub optimal_threshold: u64,    // 98% - for maximum rewards
+    pub high_threshold: u64,       // 80% - for partial rewards
+    pub min_capacity: u64,         // Minimum required for operation
+    pub suspension_threshold: u64, // 0% - node gets suspended
+
     // Charging mechanics
-    pub base_charging_rate: u64,    // Base rate for charge increase
-    pub overlap_multiplier: u64,    // Multiplier based on overlap score
-    pub discharge_rate: u64,        // Rate at which battery depletes
-    pub sync_boost_factor: u64,     // Additional charge from synchronization
-    
+    pub base_charging_rate: u64, // Base rate for charge increase
+    pub overlap_multiplier: u64, // Multiplier based on overlap score
+    pub discharge_rate: u64,     // Rate at which battery depletes
+    pub sync_boost_factor: u64,  // Additional charge from synchronization
+
     // Timing parameters
-    pub charging_cooldown: u64,     // Minimum time between charges
-    pub suspension_period: u64,     // How long node stays suspended
+    pub charging_cooldown: u64, // Minimum time between charges
+    pub suspension_period: u64, // How long node stays suspended
 }
 
 impl Default for BatteryConfig {
@@ -37,7 +37,7 @@ impl Default for BatteryConfig {
             overlap_multiplier: 2,
             discharge_rate: 1,
             sync_boost_factor: 2,
-            charging_cooldown: 1000, // 1 second
+            charging_cooldown: 1000,    // 1 second
             suspension_period: 3600000, // 1 hour
         }
     }
@@ -47,15 +47,15 @@ pub struct BatteryChargingSystem {
     // Core state
     battery_level: AtomicU64,
     config: BatteryConfig,
-    
+
     // Timing tracking
     last_charge_time: AtomicU64,
     last_suspension_time: Option<AtomicU64>,
-    
+
     // Performance metrics
     overlap_score: AtomicU64,
     sync_score: AtomicU64,
-    
+
     // Current status
     is_suspended: AtomicBool,
 }
@@ -63,7 +63,7 @@ pub struct BatteryChargingSystem {
 impl BatteryChargingSystem {
     pub fn new(config: BatteryConfig) -> Self {
         let now = window().unwrap().performance().unwrap().now() as u64;
-        
+
         Self {
             battery_level: AtomicU64::new(config.max_charge),
             config,
@@ -83,7 +83,7 @@ impl BatteryChargingSystem {
 
         let now = window().unwrap().performance().unwrap().now() as u64;
         let last_charge = self.last_charge_time.load(Ordering::Acquire);
-        
+
         // Check cooldown period
         if now - last_charge < self.config.charging_cooldown {
             return Err(SystemErrorType::CooldownPeriod);
@@ -95,17 +95,18 @@ impl BatteryChargingSystem {
         }
 
         // Calculate charge amount based on overlap and sync scores
-        let overlap_bonus = self.overlap_score.load(Ordering::Relaxed) * self.config.overlap_multiplier;
+        let overlap_bonus =
+            self.overlap_score.load(Ordering::Relaxed) * self.config.overlap_multiplier;
         let sync_bonus = self.sync_score.load(Ordering::Relaxed) * self.config.sync_boost_factor;
         let total_charge = self.config.base_charging_rate + overlap_bonus + sync_bonus;
 
         // Apply charge
         let new_level = current_level.saturating_add(total_charge);
         let capped_level = new_level.min(self.config.max_charge);
-        
+
         self.battery_level.store(capped_level, Ordering::Release);
         self.last_charge_time.store(now, Ordering::Release);
-        
+
         Ok(())
     }
 
@@ -138,7 +139,6 @@ impl BatteryChargingSystem {
         self.last_suspension_time = Some(AtomicU64::new(now));
         Ok(())
     }
-
 
     pub async fn check_suspension(&self) -> bool {
         if let Some(last_suspension) = &self.last_suspension_time {
@@ -173,7 +173,8 @@ impl BatteryChargingSystem {
 
     pub fn is_high(&self) -> bool {
         let percentage = self.get_charge_percentage();
-        percentage >= self.config.high_threshold as f64 && percentage < self.config.optimal_threshold as f64
+        percentage >= self.config.high_threshold as f64
+            && percentage < self.config.optimal_threshold as f64
     }
 
     pub fn is_suspended(&self) -> bool {
@@ -193,7 +194,7 @@ mod tests {
     async fn test_charging_system() {
         let config = BatteryConfig::default();
         let mut system = BatteryChargingSystem::new(config);
-        
+
         // Test initial state
         assert_eq!(system.get_charge_percentage(), 100.0);
         assert!(system.is_optimal());
@@ -208,7 +209,7 @@ mod tests {
         system.update_overlap_score(10);
         system.update_sync_score(5);
         system.charge().await.unwrap();
-        
+
         // Verify charge increased
         assert!(system.get_charge_percentage() > 80.0);
     }
@@ -221,7 +222,7 @@ mod tests {
         // Consume until suspension
         system.consume_charge(95).await.unwrap();
         assert!(system.is_suspended());
-        
+
         // Verify suspended operations fail
         assert!(system.charge().await.is_err());
         assert!(system.consume_charge(1).await.is_err());

@@ -1,9 +1,8 @@
 // src/core/storage_node/storage_node_config.rs
 
-use std::collections::HashSet;
 use crate::core::error::errors::SystemError;
 use serde::{Deserialize, Serialize};
-
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageNodeConfig {

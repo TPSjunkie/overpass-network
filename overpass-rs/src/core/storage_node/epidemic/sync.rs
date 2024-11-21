@@ -1,14 +1,14 @@
-use crate::core::types::StorageOpCode::SyncState;
-use std::sync::Arc;
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use web_sys::{console, window};
-use wasm_bindgen_futures::spawn_local;
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::storage_node::battery::charging::BatteryChargingSystem;
 use crate::core::storage_node::epidemic::overlap::StorageOverlapManager;
 use crate::core::types::boc::BOC;
+use crate::core::types::StorageOpCode::SyncState;
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::{console, window};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncStateEnum {
@@ -122,13 +122,16 @@ impl SynchronizationManager {
             while *manager.is_syncing.read() {
                 manager.sync_cycle().await;
                 wasm_bindgen_futures::JsFuture::from(js_sys::Promise::new(&mut |resolve, _| {
-                    window().unwrap()
+                    window()
+                        .unwrap()
                         .set_timeout_with_callback_and_timeout_and_arguments_0(
                             &resolve,
                             manager.config.sync_interval as i32,
                         )
                         .unwrap();
-                })).await.unwrap();
+                }))
+                .await
+                .unwrap();
             }
         });
 
@@ -208,7 +211,9 @@ impl SynchronizationManager {
         active_syncs.insert(*peer);
         drop(active_syncs);
 
-        self.peer_states.write().insert(*peer, crate::core::types::StorageOpCode::SyncState);
+        self.peer_states
+            .write()
+            .insert(*peer, crate::core::types::StorageOpCode::SyncState);
         let start_time = window().unwrap().performance().unwrap().now();
 
         let result = self.execute_sync(peer).await;
@@ -216,11 +221,15 @@ impl SynchronizationManager {
         match result {
             Ok(()) => {
                 self.last_sync.write().insert(*peer, start_time as u64);
-                self.peer_states.write().insert(*peer, crate::core::types::StorageOpCode::SyncState);
+                self.peer_states
+                    .write()
+                    .insert(*peer, crate::core::types::StorageOpCode::SyncState);
                 Ok(())
             }
             Err(e) => {
-                self.peer_states.write().insert(*peer, crate::core::types::StorageOpCode::SyncState);
+                self.peer_states
+                    .write()
+                    .insert(*peer, crate::core::types::StorageOpCode::SyncState);
                 Err(e)
             }
         }
@@ -234,14 +243,18 @@ impl SynchronizationManager {
 
         for state in states_to_sync {
             if let Err(e) = self.verify_state(&state).await {
-                console::warn_1(&format!(
-                    "State verification failed for peer {:?}, state {:?}: {:?}",
-                    peer, state, e
-                ).into());
+                console::warn_1(
+                    &format!(
+                        "State verification failed for peer {:?}, state {:?}: {:?}",
+                        peer, state, e
+                    )
+                    .into(),
+                );
                 continue;
             }
 
-            self.verified_states.write()
+            self.verified_states
+                .write()
                 .entry(*peer)
                 .or_insert_with(HashSet::new)
                 .insert(state);
@@ -249,29 +262,31 @@ impl SynchronizationManager {
 
         Ok(())
     }
-    async fn get_unverified_states(&self, peer: &[u8; 32]) -> Result<HashSet<[u8; 32]>, SystemError> {
-        let verified = self.verified_states.read()
+    async fn get_unverified_states(
+        &self,
+        peer: &[u8; 32],
+    ) -> Result<HashSet<[u8; 32]>, SystemError> {
+        let verified = self
+            .verified_states
+            .read()
             .get(peer)
             .cloned()
             .unwrap_or_default();
-        
+
         let mut unverified = HashSet::new();
         for (hash, _) in self.states.read().iter() {
             if !verified.contains(hash) {
                 unverified.insert(*hash);
             }
         }
-        
+
         Ok(unverified)
     }
 
     async fn verify_state(&self, state_hash: &[u8; 32]) -> Result<(), SystemError> {
         let states = self.states.read();
         let state = states.get(state_hash).ok_or_else(|| {
-            SystemError::new(
-                SystemErrorType::InvalidInput,
-                "State not found".to_string(),
-            )
+            SystemError::new(SystemErrorType::InvalidInput, "State not found".to_string())
         })?;
 
         // Verify state validity here
@@ -291,92 +306,96 @@ impl SynchronizationManager {
         self.config.clone()
     }
 }
-    #[cfg(test)]
-    mod tests {
-        use crate::core::types::StorageOpCode;
-        use super::*;
-        use wasm_bindgen_test::*;
-    
-        wasm_bindgen_test_configure!(run_in_browser);
-    
-        async fn setup_sync_manager() -> SynchronizationManager {
-            let battery_system = Arc::new(BatteryChargingSystem::new(Default::default()));
-            let overlap_manager = Arc::new(StorageOverlapManager::new(0.8, 3));
-            let config = SyncConfig::default();
-            SynchronizationManager::new(battery_system, overlap_manager, config)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::StorageOpCode;
+    use wasm_bindgen_test::*;
+
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    async fn setup_sync_manager() -> SynchronizationManager {
+        let battery_system = Arc::new(BatteryChargingSystem::new(Default::default()));
+        let overlap_manager = Arc::new(StorageOverlapManager::new(0.8, 3));
+        let config = SyncConfig::default();
+        SynchronizationManager::new(battery_system, overlap_manager, config)
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_sync_lifecycle() {
+        let manager = setup_sync_manager().await;
+        let manager = Arc::new(manager);
+        assert!(manager.clone().start_sync().await.is_ok());
+        assert!(*manager.is_syncing.read());
+        manager.stop_sync();
+        assert!(!*manager.is_syncing.read());
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_battery_requirements() {
+        let mut manager = setup_sync_manager().await;
+        Arc::get_mut(&mut manager.battery_system)
+            .unwrap()
+            .consume_charge(90)
+            .await
+            .unwrap();
+        manager.sync_cycle().await;
+        let metrics = manager.get_metrics();
+        assert!(metrics.battery_rejections > 0);
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_peer_sync() {
+        let manager = setup_sync_manager().await;
+        let peer = [1u8; 32];
+        let result = manager.sync_with_peer(&peer).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            *manager.peer_states.read().get(&peer).unwrap(),
+            StorageOpCode::SyncState
+        );
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_sync_retries() {
+        let manager = setup_sync_manager().await;
+        let peer = [2u8; 32];
+        for _ in 0..manager.config.max_sync_retries {
+            manager.sync_with_peer(&peer).await.unwrap_err();
         }
-    
-        #[wasm_bindgen_test]
-        async fn test_sync_lifecycle() {
-            let manager = setup_sync_manager().await;
-            let manager = Arc::new(manager);
-            assert!(manager.clone().start_sync().await.is_ok());
-            assert!(*manager.is_syncing.read());
-            manager.stop_sync();
-            assert!(!*manager.is_syncing.read());
+        assert_eq!(
+            *manager.peer_states.read().get(&peer).unwrap(),
+            StorageOpCode::ValidateSync
+        );
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.suspended_peers, 1);
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_metrics_tracking() {
+        let manager = setup_sync_manager().await;
+        let peer = [3u8; 32];
+        manager.sync_with_peer(&peer).await.unwrap();
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.successful_syncs, 1);
+        assert_eq!(metrics.failed_syncs, 0);
+        assert!(metrics.average_sync_time > 0.0);
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_concurrent_syncs() {
+        let manager = setup_sync_manager().await;
+        let mut peers = Vec::new();
+        for i in 0..manager.config.max_concurrent_syncs + 1 {
+            peers.push([i as u8; 32]);
         }
-    
-        #[wasm_bindgen_test]
-        async fn test_battery_requirements() {
-            let mut manager = setup_sync_manager().await;
-            Arc::get_mut(&mut manager.battery_system).unwrap().consume_charge(90).await.unwrap();
-            manager.sync_cycle().await;
-            let metrics = manager.get_metrics();
-            assert!(metrics.battery_rejections > 0);
-        }
-    
-        #[wasm_bindgen_test]
-        async fn test_peer_sync() {
-            let manager = setup_sync_manager().await;
-            let peer = [1u8; 32];
-            let result = manager.sync_with_peer(&peer).await;
-            assert!(result.is_ok());
-            assert_eq!(
-                *manager.peer_states.read().get(&peer).unwrap(),
-                StorageOpCode::SyncState
-            );
-        }
-    
-        #[wasm_bindgen_test]
-        async fn test_sync_retries() {
-            let manager = setup_sync_manager().await;
-            let peer = [2u8; 32];
-            for _ in 0..manager.config.max_sync_retries {
-                manager.sync_with_peer(&peer).await.unwrap_err();
-            }
-            assert_eq!(
-                *manager.peer_states.read().get(&peer).unwrap(),
-                StorageOpCode::ValidateSync
-            );
-            let metrics = manager.get_metrics();
-            assert_eq!(metrics.suspended_peers, 1);
-        }
-    
-        #[wasm_bindgen_test]
-        async fn test_metrics_tracking() {
-            let manager = setup_sync_manager().await;
-            let peer = [3u8; 32];
-            manager.sync_with_peer(&peer).await.unwrap();
-            let metrics = manager.get_metrics();
-            assert_eq!(metrics.successful_syncs, 1);
-            assert_eq!(metrics.failed_syncs, 0);
-            assert!(metrics.average_sync_time > 0.0);
-        }
-    
-        #[wasm_bindgen_test]
-        async fn test_concurrent_syncs() {
-            let manager = setup_sync_manager().await;
-            let mut peers = Vec::new();
-            for i in 0..manager.config.max_concurrent_syncs + 1 {
-                peers.push([i as u8; 32]);
-            }
-            for peer in &peers {
-                let result = manager.sync_with_peer(peer).await;
-                if peers.len() > manager.config.max_concurrent_syncs {
-                    assert!(result.is_err());
-                } else {
-                    assert!(result.is_ok());
-                }
+        for peer in &peers {
+            let result = manager.sync_with_peer(peer).await;
+            if peers.len() > manager.config.max_concurrent_syncs {
+                assert!(result.is_err());
+            } else {
+                assert!(result.is_ok());
             }
         }
     }
+}

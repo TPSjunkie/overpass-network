@@ -1,7 +1,5 @@
 // ./src/core/zkps/zkp_transaction.rs
 
-
-
 //
 // pub struct ZkpTransaction {
 //     pub circuit: ZkpCircuit, // The circuit that will be used to generate the proof

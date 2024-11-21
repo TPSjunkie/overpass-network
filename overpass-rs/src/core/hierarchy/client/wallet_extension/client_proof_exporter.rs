@@ -1,10 +1,10 @@
 // client_proof_exporter.rs
 // This module is responsible for exporting the wallet root and its associated proof in a BOC (Bag of Cells) format for submission to the intermediate layer.
 
-use frame_support::{Deserialize, Serialize};
 use crate::core::error::SystemError;
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
+use frame_support::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 /// Enum representing different types of proofs.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,14 +25,22 @@ pub struct WalletRootProof {
     pub proof_type: ProofType,
     pub channel_id: Option<[u8; 32]>,
     pub state_root: Option<[u8; 32]>,
-    pub state_proof: Option<ZkProof>,   
+    pub state_proof: Option<ZkProof>,
 }
 impl WalletRootProof {
     /// Exports the wallet root and its associated proof in a BOC (Bag of Cells) format for submission to the intermediate layer.
     pub fn export_proof_boc(&self) -> Result<BOC, SystemError> {
         let mut data = Vec::new();
         data.extend_from_slice(&self.wallet_root);
-        data.extend_from_slice(&self.proof.public_inputs.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>());        data.extend_from_slice(&self.proof.merkle_root);
+        data.extend_from_slice(
+            &self
+                .proof
+                .public_inputs
+                .iter()
+                .flat_map(|x| x.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        data.extend_from_slice(&self.proof.merkle_root);
         data.extend_from_slice(&self.proof.proof_data);
         data.extend_from_slice(&self.metadata.timestamp.to_le_bytes());
         data.extend_from_slice(&self.metadata.nonce.to_le_bytes());
@@ -42,7 +50,7 @@ impl WalletRootProof {
         let mut hasher = Sha256::new();
         hasher.update(&data);
         let _hash = hasher.finalize();
-        
+
         Ok(BOC::new())
     }
 }
@@ -53,7 +61,7 @@ pub struct ProofMetadata {
     pub nonce: u64,
     pub wallet_id: [u8; 32],
     pub proof_type: ProofType,
-    pub channel_id: Option<[u8; 32]>,   
+    pub channel_id: Option<[u8; 32]>,
     pub state_root: Option<[u8; 32]>,
     pub state_proof: Option<ZkProof>,
 }

@@ -1,8 +1,8 @@
 // ./src/core/hierarchy/client/transaction/transaction_types.rs
 
+use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
 use crate::core::hierarchy::client::wallet_extension::wallet_extension_types::WalletExtension;
 use crate::core::zkps::proof::ZkProof;
-use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -203,21 +203,20 @@ impl std::fmt::Debug for TransactionOCData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::sync::RwLock;
+    use crate::core::hierarchy::client::channel::channel_contract;
     use crate::core::hierarchy::client::channel::channel_contract::ChannelContract;
-    use crate::core::zkps::proof::ZkProof;
     use crate::core::hierarchy::client::transaction::transaction_types::WalletExtension;
     use crate::core::hierarchy::client::wallet_extension::wallet_extension_contract;
-    use crate::core::hierarchy::client::channel::channel_contract;
-    
-   
-
+    use crate::core::zkps::proof::ZkProof;
+    use std::sync::Arc;
+    use std::sync::RwLock;
 
     // Helper function to create a dummy transaction for testing
     fn create_test_transaction() -> TransactionOCData {
         let wallet_extension = Arc::new(RwLock::new(WalletExtension::default()));
-        let channel_contract = Arc::new(RwLock::new(channel_contract::ChannelContract::new(&hex::encode([0u8; 32]))));
+        let channel_contract = Arc::new(RwLock::new(channel_contract::ChannelContract::new(
+            &hex::encode([0u8; 32]),
+        )));
         let proof = ZkProof::default();
 
         TransactionOCData::new(
@@ -229,10 +228,12 @@ mod tests {
             1000,
             20_000_000_000, // 20 Gwei
             21000,          // Standard gas limit
-            0,             // Nonce
-            1000000,       // Fee
+            0,              // Nonce
+            1000000,        // Fee
         )
-    }    #[test]    fn test_transaction_validation() {
+    }
+    #[test]
+    fn test_transaction_validation() {
         let transaction = create_test_transaction();
         assert!(transaction.validate());
     }
@@ -241,7 +242,7 @@ mod tests {
     fn test_transaction_status_update() {
         let mut transaction = create_test_transaction();
         assert_eq!(transaction.status, TransactionStatus::Pending);
-        
+
         transaction.update_status(TransactionStatus::Confirmed);
         assert_eq!(transaction.status, TransactionStatus::Confirmed);
     }
@@ -250,7 +251,7 @@ mod tests {
     fn test_confirmation_increment() {
         let mut transaction = create_test_transaction();
         assert_eq!(transaction.confirmations, 0);
-        
+
         transaction.increment_confirmations();
         assert_eq!(transaction.confirmations, 1);
     }
@@ -259,7 +260,7 @@ mod tests {
     fn test_total_cost_calculation() {
         let mut transaction = create_test_transaction();
         transaction.set_gas_used(21000);
-        
+
         let total_cost = transaction.total_cost().unwrap();
         let expected_cost = (21000u128 * 20_000_000_000u128) + 1000000;
         assert_eq!(total_cost, expected_cost);

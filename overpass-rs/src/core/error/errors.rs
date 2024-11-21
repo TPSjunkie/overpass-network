@@ -104,7 +104,7 @@ impl fmt::Display for SystemErrorType {
             Self::LowBattery => write!(f, "Low battery"),
             Self::CooldownPeriod => write!(f, "Cooldown period"),
             Self::CircuitError => write!(f, "Circuit error"),
-            Self::ProofError => write!(f, "Proof error"),   
+            Self::ProofError => write!(f, "Proof error"),
             Self::StateDataMismatch => write!(f, "State data mismatch"),
             Self::TooManySyncs => write!(f, "Too many syncs"),
             Self::OverlapRequirementNotMet => write!(f, "Overlap requirement not met"),

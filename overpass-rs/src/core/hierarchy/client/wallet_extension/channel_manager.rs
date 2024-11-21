@@ -127,7 +127,8 @@ impl ChannelManager {
 
         channels.insert(channel_id, channel);
         Ok(channel_id)
-    }    fn update_channel_state(
+    }
+    fn update_channel_state(
         &self,
         channel_id: &[u8; 32],
         new_state: Vec<u8>,
@@ -284,7 +285,6 @@ fn serialize_channel(channel: &Arc<RwLock<ChannelContract>>) -> Vec<u8> {
 
     serialized
 }
-
 
 #[wasm_bindgen]
 #[derive(Debug)]

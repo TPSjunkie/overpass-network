@@ -1,15 +1,15 @@
-use std::collections::HashSet;
-use std::collections::HashMap;
-use std::sync::Arc;
 use parking_lot::RwLock;
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
 
 use crate::core::error::errors::{SystemError, SystemErrorType};
 
 // Overlap score thresholds
-const MIN_OVERLAP_SCORE: f64 = 0.8;  // Minimum overlap required for synchronization
-const TARGET_REDUNDANCY: usize = 3;   // Target number of redundant copies
-const MAX_REDUNDANCY: usize = 5;      // Maximum allowed redundancy
+const MIN_OVERLAP_SCORE: f64 = 0.8; // Minimum overlap required for synchronization
+const TARGET_REDUNDANCY: usize = 3; // Target number of redundant copies
+const MAX_REDUNDANCY: usize = 5; // Maximum allowed redundancy
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlapMetrics {
@@ -39,26 +39,24 @@ impl Default for OverlapMetrics {
 #[derive(Debug, Clone)]
 pub struct NodeOverlap {
     pub node_id: [u8; 32],
-    pub shared_states: HashSet<[u8; 32]>,  // States both nodes have
+    pub shared_states: HashSet<[u8; 32]>, // States both nodes have
     pub overlap_score: f64,
     pub last_sync: u64,
     pub sync_success_rate: f64,
 }
 
-
-
 pub struct StorageOverlapManager {
     // Core state tracking
     node_responsibilities: RwLock<HashMap<[u8; 32], HashSet<[u8; 32]>>>, // node -> states
     state_assignments: RwLock<HashMap<[u8; 32], HashSet<[u8; 32]>>>,     // state -> nodes
-    
+
     // Overlap tracking
-    overlap_scores: RwLock<HashMap<([u8; 32], [u8; 32]), f64>>,         // (node1, node2) -> score
-    node_overlaps: RwLock<HashMap<[u8; 32], Vec<NodeOverlap>>>,         // node -> overlapping nodes
-    
+    overlap_scores: RwLock<HashMap<([u8; 32], [u8; 32]), f64>>, // (node1, node2) -> score
+    node_overlaps: RwLock<HashMap<[u8; 32], Vec<NodeOverlap>>>, // node -> overlapping nodes
+
     // Metrics
     metrics: RwLock<OverlapMetrics>,
-    
+
     // Configuration
     min_overlap_threshold: f64,
     target_redundancy: usize,
@@ -106,14 +104,13 @@ impl StorageOverlapManager {
     // Calculate overlap score between two nodes
     pub fn calculate_overlap_score(&self, node1: [u8; 32], node2: [u8; 32]) -> f64 {
         let responsibilities = self.node_responsibilities.read();
-        
-        if let (Some(states1), Some(states2)) = (
-            responsibilities.get(&node1),
-            responsibilities.get(&node2)
-        ) {
+
+        if let (Some(states1), Some(states2)) =
+            (responsibilities.get(&node1), responsibilities.get(&node2))
+        {
             let intersection: HashSet<_> = states1.intersection(states2).collect();
             let union: HashSet<_> = states1.union(states2).collect();
-            
+
             if !union.is_empty() {
                 intersection.len() as f64 / union.len() as f64
             } else {
@@ -129,23 +126,23 @@ impl StorageOverlapManager {
         let responsibilities = self.node_responsibilities.read();
         let mut overlap_scores = self.overlap_scores.write();
         let mut node_overlaps = self.node_overlaps.write();
-        
+
         let nodes: Vec<[u8; 32]> = responsibilities.keys().copied().collect();
         let mut node_overlap_list = Vec::new();
 
         for other_node in nodes {
             if other_node != node_id {
                 let score = self.calculate_overlap_score(node_id, other_node);
-                
+
                 // Update overlap scores
                 overlap_scores.insert((node_id, other_node), score);
-                
+
                 // Update node overlaps
                 if score >= self.min_overlap_threshold {
                     let shared_states = {
                         if let (Some(states1), Some(states2)) = (
                             responsibilities.get(&node_id),
-                            responsibilities.get(&other_node)
+                            responsibilities.get(&other_node),
                         ) {
                             states1.intersection(states2).copied().collect()
                         } else {
@@ -251,8 +248,12 @@ impl StorageOverlapManager {
         metrics.lowest_overlap_score = scores.iter().copied().fold(f64::MAX, f64::min);
 
         // Calculate redundancy
-        let redundancy: Vec<usize> = state_assignments.values().map(|nodes| nodes.len()).collect();
-        metrics.redundancy_factor = redundancy.iter().sum::<usize>() as f64 / redundancy.len() as f64;
+        let redundancy: Vec<usize> = state_assignments
+            .values()
+            .map(|nodes| nodes.len())
+            .collect();
+        metrics.redundancy_factor =
+            redundancy.iter().sum::<usize>() as f64 / redundancy.len() as f64;
 
         // Update other metrics
         metrics.total_peers = self.node_responsibilities.read().len();
@@ -273,8 +274,7 @@ impl StorageOverlapManager {
     // Get sync score (based on redundancy and overlap)
     pub fn get_sync_score(&self) -> f64 {
         let metrics = self.metrics.read();
-        (metrics.redundancy_factor / self.target_redundancy as f64)
-            .min(1.0)
+        (metrics.redundancy_factor / self.target_redundancy as f64).min(1.0)
             * metrics.average_overlap_score
     }
 }
@@ -309,7 +309,7 @@ mod tests {
         let state_id = generate_state_id(1);
 
         assert!(manager.assign_state(state_id, node_id).is_ok());
-        
+
         let responsibilities = manager.node_responsibilities.read();
         assert!(responsibilities.get(&node_id).unwrap().contains(&state_id));
     }
@@ -325,7 +325,7 @@ mod tests {
         // Assign same state to both nodes
         manager.assign_state(state1, node1).unwrap();
         manager.assign_state(state1, node2).unwrap();
-        
+
         // Assign different state to node2
         manager.assign_state(state2, node2).unwrap();
 

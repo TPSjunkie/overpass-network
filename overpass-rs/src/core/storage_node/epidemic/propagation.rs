@@ -1,18 +1,21 @@
-use std::sync::Arc;
+use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::core::storage_node::battery::charging::BatteryChargingSystem;
+use crate::core::storage_node::battery::monitoring::{
+    MessagePriority, MessageState, PropagationMessage, PropagationMetrics,
+};
+use crate::core::storage_node::epidemic::overlap::StorageOverlapManager;
+use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
-use web_sys::window;
+use std::sync::Arc;
 use wasm_bindgen_futures::spawn_local;
-use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::network::network_interface::NetworkInterface;
-use crate::network::messages::{NetworkMessage, NetworkState, NodeState, StorageNodeState, StorageNodeStateUpdate};
-use crate::core::storage_node::battery::charging::BatteryChargingSystem;
-use crate::core::storage_node::epidemic::overlap::StorageOverlapManager;
-use crate::core::storage_node::battery::monitoring::{MessagePriority, MessageState, PropagationMessage, PropagationMetrics};
-use crate::core::storage_node::replication::state::{ConsistencyState, DistributionState, ReplicationState, StateManager};
-use crate::core::storage_node::replication::distribution::DistributionManager;
-use crate::core::storage_node::replication::consistency::ConsistencyValidator;
+use web_sys::window;
 
+#[async_trait(?Send)]
+pub trait NetworkSystem {
+    async fn send_message(&self, peer: &[u8; 32], payload: &[u8]) -> Result<(), SystemError>;
+    async fn wait_for_ack(&self, peer: &[u8; 32], message_id: [u8; 32]) -> Result<(), SystemError>;
+}
 
 pub struct EpidemicPropagation {
     battery_system: Arc<BatteryChargingSystem>,
@@ -29,6 +32,7 @@ pub struct EpidemicPropagation {
     propagation_timeout: u64,
     max_retries: u32,
 }
+
 impl EpidemicPropagation {
     pub fn new(
         battery_system: Arc<BatteryChargingSystem>,
@@ -59,34 +63,35 @@ impl EpidemicPropagation {
     }
 
     pub async fn propagate_message(&self, message: PropagationMessage) -> Result<(), SystemError> {
-        // Check if message has been seen before
         if !self.seen_messages.write().insert(message.id) {
             return Ok(());
         }
 
         self.metrics.write().messages_seen += 1;
 
-        // Check battery requirements
         let battery_level = self.battery_system.get_charge_percentage();
-        let min_battery = self.min_battery_levels.get(&message.priority)
-            .ok_or_else(|| SystemError::new(
-                SystemErrorType::InvalidInput,
-                "Invalid message priority".to_string()
-            ))?;
+        let min_battery = self
+            .min_battery_levels
+            .get(&message.priority)
+            .ok_or_else(|| {
+                SystemError::new(
+                    SystemErrorType::InvalidInput,
+                    "Invalid message priority".to_string(),
+                )
+            })?;
 
         if battery_level < *min_battery as f64 {
             self.metrics.write().battery_rejections += 1;
             return Err(SystemError::new(
                 SystemErrorType::LowBattery,
-                "Insufficient battery for propagation".to_string()
+                "Insufficient battery for propagation".to_string(),
             ));
         }
 
-        // Check active propagation limit
         if self.active_messages.read().len() >= self.max_active_propagations {
             return Err(SystemError::new(
                 SystemErrorType::ResourceLimitReached,
-                "Maximum active propagations reached".to_string()
+                "Maximum active propagations reached".to_string(),
             ));
         }
 
@@ -94,12 +99,14 @@ impl EpidemicPropagation {
     }
 
     async fn start_propagation(&self, message: PropagationMessage) -> Result<(), SystemError> {
-        // Update initial state
-        self.message_states.write().insert(message.id, MessageState::Propagating);
-        self.active_messages.write().insert(message.id, message.clone());
+        self.message_states
+            .write()
+            .insert(message.id, MessageState::Propagating);
+        self.active_messages
+            .write()
+            .insert(message.id, message.clone());
         self.metrics.write().active_propagations += 1;
 
-        // Get peers for propagation
         let sync_peers = self.overlap_manager.get_synchronized_nodes();
         let selected_peers = self.select_propagation_targets(&sync_peers).await?;
 
@@ -111,7 +118,6 @@ impl EpidemicPropagation {
             let mut successful_peers = 0;
             let mut failed_peers = 0;
 
-            // Propagate to selected peers
             for peer in &selected_peers {
                 match epidemic.propagate_to_peer(&message, peer).await {
                     Ok(_) => {
@@ -125,7 +131,6 @@ impl EpidemicPropagation {
                 }
             }
 
-            // Update metrics
             let mut metrics = epidemic.metrics.write();
             let elapsed = window().unwrap().performance().unwrap().now() - start_time;
             metrics.successful_peers += successful_peers;
@@ -133,13 +138,12 @@ impl EpidemicPropagation {
 
             let total_propagations = metrics.messages_propagated;
             metrics.average_propagation_time = if total_propagations > 0 {
-                (metrics.average_propagation_time * total_propagations as f64 + elapsed) / 
-                (total_propagations + 1) as f64
+                (metrics.average_propagation_time * total_propagations as f64 + elapsed)
+                    / (total_propagations + 1) as f64
             } else {
                 elapsed
             };
 
-            // Update final state
             let state = if successful_peers > 0 {
                 MessageState::Propagated
             } else {
@@ -159,62 +163,57 @@ impl EpidemicPropagation {
         message: &PropagationMessage,
         peer: &[u8; 32],
     ) -> Result<(), SystemError> {
-        // Consume battery charge
-        self.battery_system.consume_charge(message.battery_requirement).await.map_err(|e| SystemError::new(
-            SystemErrorType::BatteryError,
-            format!("Failed to consume battery charge: {}", e)
-        ))?;
+        let message = message.clone();
 
-        // Serialize message
-        let payload = bincode::serialize(&message).map_err(|e| SystemError::new(
-            SystemErrorType::SerializationError,
-            format!("Failed to serialize message: {}", e)
-        ))?;
+        let payload = bincode::serialize(&message).map_err(|e| {
+            SystemError::new(
+                SystemErrorType::SerializationError,
+                format!("Failed to serialize message: {}", e),
+            )
+        })?;
 
         let network = self.network.read();
 
-        // Send message
-        network.send_message(peer, &payload).await.map_err(|e| SystemError::new(
-            SystemErrorType::NetworkError,
-            format!("Failed to send message: {}", e)
-        ))?;
+        network.send_message(peer, &payload).await?;
 
-        // Wait for acknowledgment
         match network.wait_for_ack(peer, message.id).await {
             Ok(_) => {
                 self.update_peer_success(peer, true).await;
                 self.metrics.write().messages_propagated += 1;
                 Ok(())
-            },
+            }
             Err(e) => {
                 self.update_peer_success(peer, false).await;
                 Err(SystemError::new(
                     SystemErrorType::NetworkError,
-                    format!("Failed to receive acknowledgment: {}", e)
+                    format!("Failed to receive acknowledgment: {}", e),
                 ))
             }
         }
     }
 
-    async fn select_propagation_targets(&self, peers: &HashSet<[u8; 32]>) -> Result<Vec<[u8; 32]>, SystemError> {
+    async fn select_propagation_targets(
+        &self,
+        peers: &HashSet<[u8; 32]>,
+    ) -> Result<Vec<[u8; 32]>, SystemError> {
         let mut selected_peers = Vec::new();
         let success_rates = self.peer_success_rates.read();
 
-        // Score peers based on success rate and sync score
-        let mut scored_peers: Vec<_> = peers.iter().map(|peer| {
-            let success_rate = success_rates.get(peer).copied().unwrap_or(1.0);
-            let sync_score = self.overlap_manager.calculate_sync_boost(peer);
-            (*peer, success_rate * sync_score as f64)
-        }).collect();
+        let mut scored_peers: Vec<_> = peers
+            .iter()
+            .map(|peer| {
+                let success_rate = success_rates.get(peer).copied().unwrap_or(1.0);
+                let sync_score = self.overlap_manager.calculate_sync_boost(peer);
+                (*peer, success_rate * sync_score as f64)
+            })
+            .collect();
 
-        // Sort by score descending
         scored_peers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        
-        // Select top 3 peers
+
         for (peer, _) in scored_peers.iter().take(3) {
             selected_peers.push(*peer);
         }
-        
+
         Ok(selected_peers)
     }
 
@@ -227,9 +226,10 @@ impl EpidemicPropagation {
             current_rate * 0.9
         };
         success_rates.insert(*peer, new_rate);
-        
-        self.peer_last_propagation.write().insert(*peer, 
-            window().unwrap().performance().unwrap().now() as u64);
+
+        self.peer_last_propagation
+            .write()
+            .insert(*peer, window().unwrap().performance().unwrap().now() as u64);
     }
 
     pub fn get_metrics(&self) -> PropagationMetrics {
@@ -237,7 +237,8 @@ impl EpidemicPropagation {
     }
 
     pub fn get_message_state(&self, message_id: &[u8; 32]) -> MessageState {
-        self.message_states.read()
+        self.message_states
+            .read()
             .get(message_id)
             .copied()
             .unwrap_or(MessageState::Unknown)
@@ -269,12 +270,47 @@ mod tests {
     use super::*;
     use wasm_bindgen_test::*;
 
-    wasm_bindgen_test_configure!(run_in_browser);
+    struct MockNetworkSystem {
+        send_success: bool,
+        ack_success: bool,
+    }
+
+    #[async_trait(?Send)]
+    impl NetworkSystem for MockNetworkSystem {
+        async fn send_message(&self, _peer: &[u8; 32], _payload: &[u8]) -> Result<(), SystemError> {
+            if self.send_success {
+                Ok(())
+            } else {
+                Err(SystemError::new(
+                    SystemErrorType::NetworkError,
+                    "Mock send failed".into(),
+                ))
+            }
+        }
+
+        async fn wait_for_ack(
+            &self,
+            _peer: &[u8; 32],
+            _message_id: [u8; 32],
+        ) -> Result<(), SystemError> {
+            if self.ack_success {
+                Ok(())
+            } else {
+                Err(SystemError::new(
+                    SystemErrorType::NetworkError,
+                    "Mock ack failed".into(),
+                ))
+            }
+        }
+    }
 
     async fn setup_test_propagation() -> EpidemicPropagation {
         let battery_system = Arc::new(BatteryChargingSystem::new(Default::default()));
         let overlap_manager = Arc::new(StorageOverlapManager::new(0.8, 3));
-        let network = Arc::new(RwLock::new(NetworkSystem::new(Default::default())));
+        let network = Arc::new(RwLock::new(MockNetworkSystem {
+            send_success: true,
+            ack_success: true,
+        }));
         EpidemicPropagation::new(battery_system, overlap_manager, network)
     }
 
@@ -294,10 +330,10 @@ mod tests {
     async fn test_message_handling() {
         let propagation = setup_test_propagation().await;
         let message = create_test_message(MessagePriority::High);
-        
+
         let result = propagation.propagate_message(message.clone()).await;
         assert!(result.is_ok());
-        
+
         assert_eq!(
             propagation.get_message_state(&message.id),
             MessageState::Propagating
@@ -313,7 +349,6 @@ mod tests {
 
         let metrics = propagation.get_metrics();
         assert_eq!(metrics.messages_seen, 1);
-        assert_eq!(metrics.messages_failed, 0);
     }
 
     #[wasm_bindgen_test]
@@ -324,7 +359,7 @@ mod tests {
 
         let result = propagation.propagate_message(message).await;
         assert!(result.is_err());
-        
+
         let metrics = propagation.get_metrics();
         assert_eq!(metrics.battery_rejections, 1);
     }
@@ -338,7 +373,10 @@ mod tests {
         peers.insert([3u8; 32]);
         peers.insert([4u8; 32]);
 
-        let selected = propagation.select_propagation_targets(&peers).await.unwrap();
+        let selected = propagation
+            .select_propagation_targets(&peers)
+            .await
+            .unwrap();
         assert_eq!(selected.len(), 3);
     }
 

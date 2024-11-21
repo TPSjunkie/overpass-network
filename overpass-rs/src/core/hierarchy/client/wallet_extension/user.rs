@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use crate::core::hierarchy::client::wallet_extension::client_proof_exporter::WalletRootProof;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::core::types::boc::BOC;
@@ -12,7 +12,7 @@ pub enum UserData {
 }
 
 #[wasm_bindgen(js_name = "User")]
-#[derive(Debug, Clone, Serialize, Deserialize)]     
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     name: String,
     channels: Vec<Vec<u8>>,
@@ -33,9 +33,9 @@ impl User {
     }
 
     pub fn new_empty(name: String) -> User {
-        User { 
+        User {
             name,
-            channels: Vec::new() 
+            channels: Vec::new(),
         }
     }
 
@@ -43,7 +43,7 @@ impl User {
     pub fn name(&self) -> String {
         self.name.clone()
     }
-    
+
     pub fn get_channel_count(&self) -> usize {
         self.channels.len()
     }
@@ -91,7 +91,10 @@ impl User {
 
     pub fn get_channel_state_string(&self, channel_id: &[u8]) -> String {
         let channel_state = self.query_blockchain_state(channel_id);
-        format!("Balance: {}, Transactions: {}", channel_state.balance, channel_state.transaction_count)
+        format!(
+            "Balance: {}, Transactions: {}",
+            channel_state.balance, channel_state.transaction_count
+        )
     }
 
     pub fn get_channel_state_json(&self, channel_id: &[u8]) -> String {
@@ -107,23 +110,27 @@ impl User {
 
 impl User {
     pub fn new(name: String) -> User {
-        User { 
+        User {
             name,
-            channels: Vec::new()
+            channels: Vec::new(),
         }
     }
 
     pub fn query_blockchain_state(&self, channel_id: &[u8]) -> ChannelState {
         // Generate deterministic pseudo-random state based on channel_id
         let mut channel_state = ChannelState::default();
-        
+
         if self.channels.iter().any(|c| c == channel_id) {
-            channel_state.balance = channel_id.iter()
-                .fold(0u64, |acc, &x| acc.wrapping_add(x as u64)) * 1000;
-            channel_state.transaction_count = channel_id.iter()
-                .fold(0u64, |acc, &x| acc.wrapping_add(x as u64)) % 100;
+            channel_state.balance = channel_id
+                .iter()
+                .fold(0u64, |acc, &x| acc.wrapping_add(x as u64))
+                * 1000;
+            channel_state.transaction_count = channel_id
+                .iter()
+                .fold(0u64, |acc, &x| acc.wrapping_add(x as u64))
+                % 100;
         }
-        
+
         channel_state
     }
 }
