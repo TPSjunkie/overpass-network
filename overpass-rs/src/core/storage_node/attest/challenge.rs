@@ -60,7 +60,7 @@ impl From<SystemError> for ChallengeManagerError {
     }
 }
 
-pub struct ChallengeManager {
+pub struct ChallengeManager<StorageNode> {
     storage_node: Arc<StorageNode>,
     challenge_fee: u64,
     challenge_threshold: u64,
