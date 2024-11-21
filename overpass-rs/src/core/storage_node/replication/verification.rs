@@ -63,7 +63,9 @@ impl<F: RichField + Extendable<D>> VerificationManager<F> {
     }
 
     pub async fn verify(&self) -> VerificationResult<bool> {
-        let state = self.state_manager.get_current_state()
+        let state = self
+            .state_manager
+            .in_current_span()
             .map_err(|e| VerificationError::StateError(e.to_string()))?;
             
         if !state.verify_validity() {
