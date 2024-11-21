@@ -1,19 +1,16 @@
 
 // ./src/core/hierarchy/root/sparse_merkle_tree_r.rs    
-
 use sha2::Digest;
-use frame_support::Serialize;
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
-use crate::core::types::boc::{Cell, CellType, BOC};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
+use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::types::Field;
-use sha2::Sha256;
 use std::collections::HashMap;
-
 /// Root Tree Trait
 pub trait RootTreeManagerTrait {
     /// Add a new cell to the tree  
