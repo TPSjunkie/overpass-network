@@ -1,15 +1,15 @@
 use std::sync::Arc;
 use plonky2::hash::hash_types::RichField;
+use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::extension::Extendable;
 use serde::{Serialize, Deserialize};
 use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::types::boc::BOC;
 use crate::core::zkps::proof::ZkProof;
-use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit, CircuitConfig}; 
-use crate::core::storage_node::storage_node_contract::StorageNode;
-
+use crate::core::zkps::circuit_builder::{ZkCircuitBuilder, Circuit}; 
+use crate::core::storage_node::storage_node_contract::{StorageAndRetrievalMetrics, StorageAndRetrievalManager};
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorageAndRetrievalMetrics {
+pub struct LocalStorageAndRetrievalMetrics {
     pub store_boc: u64,
     pub store_proof: u64,
     pub retrieve_boc: u64,
@@ -19,7 +19,7 @@ pub struct StorageAndRetrievalMetrics {
     pub verification_failure: u64,
 }
 
-impl Default for StorageAndRetrievalMetrics {
+impl Default for LocalStorageAndRetrievalMetrics {
     fn default() -> Self {
         Self {
             store_boc: 0,
@@ -33,9 +33,9 @@ impl Default for StorageAndRetrievalMetrics {
     }
 }
 
-pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>> {
+pub struct LocalStorageAndRetrievalManager<F: RichField + Extendable<2>> {
     storage_node: Arc<StorageNode>,
-    metrics: StorageAndRetrievalMetrics,
+    metrics: LocalStorageAndRetrievalMetrics,
     store_boc: bool,
     store_proof: bool,
     retrieve_boc: bool,  
@@ -49,7 +49,7 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub fn new(storage_node: Arc<StorageNode>) -> Self {
         Self {
             storage_node,
-            metrics: StorageAndRetrievalMetrics::default(),
+            metrics: LocalStorageAndRetrievalMetrics::default(),
             store_boc: true,
             store_proof: true,
             retrieve_boc: true,
@@ -215,10 +215,8 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 mod tests {
     use super::*;
     use crate::core::storage_node::storage_node_contract::{
-        StorageNodeConfig, BatteryConfig, SyncConfig,
-        EpidemicProtocolConfig, NetworkConfig
+      
     };
-    use plonky2::field::goldilocks_field::GoldilocksField;
     use std::collections::HashSet;
     use wasm_bindgen_test::*;
 
