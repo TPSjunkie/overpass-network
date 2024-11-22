@@ -14,17 +14,17 @@ type ChannelIdMap = HashMap<ChannelId, ChannelClosureRequest>;
 type ChannelIdMapVec = VecDeque<ChannelId>;
 
 pub trait ByteArray<const N: usize> {
-   fn new() -> Self;
-   fn from_bytes(bytes: [u8; N]) -> Self;
-   fn to_bytes(&self) -> [u8; N];
-   fn from_str(s: &str) -> Self;
-   fn to_string(&self) -> String;
-   fn from_hex(s: &str) -> Self;
-   fn to_hex(&self) -> String;
-   fn from_base64(s: &str) -> Self;
-   fn to_base64(&self) -> String;
-   fn zero() -> Self;
-   fn one() -> Self;
+    fn new() -> Self;
+    fn from_bytes(bytes: [u8; N]) -> Self;
+    fn to_bytes(&self) -> [u8; N];
+    fn from_str(s: &str) -> Self;
+    fn to_string(&self) -> String;
+    fn from_hex(s: &str) -> Self;
+    fn to_hex(&self) -> String;
+    fn from_base64(s: &str) -> Self;
+    fn to_base64(&self) -> String;
+    fn zero() -> Self;
+    fn one() -> Self;
 }
 
 // Remove the recursive type alias

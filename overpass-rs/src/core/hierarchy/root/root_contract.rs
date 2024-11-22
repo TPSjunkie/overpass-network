@@ -1,13 +1,13 @@
 // root_contract.rs
 use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
 use crate::core::hierarchy::client::wallet_extension::wallet_extension_types::Transaction;
 use crate::core::hierarchy::root::sparse_merkle_tree_r::SparseMerkleTreeR;
-use crate::core::types::boc::{Cell, CellType, BOC};
+use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::hash::merkle_proofs::MerkleProof;
 use plonky2::hash::poseidon::PoseidonHash;
 use std::collections::HashMap;
-
 pub struct RootContract {
     global_tree: SparseMerkleTreeR,
     intermediate_roots: HashMap<Address, Hash>,
@@ -83,16 +83,16 @@ impl RootContract {
     ) -> Result<bool, String> {
         if !self.verify_transaction_state {
             return Ok(false);
-        }   
+        }
         Ok(true)
     }
     pub fn deserialize(boc: BOC) -> Result<Self, SystemError> {
-        let root_cell = boc.get_root_cell().ok_or(SystemError {
+        let root_cell = boc.roots.first().ok_or(SystemError {
             error_type: SystemErrorType::NotFound,
             message: "Empty BOC".to_string(),
         })?;
 
-        let state_data = root_cell.get_data();
+        let state_data = root_cell;
         if state_data.len() < 26 {
             return Err(SystemError {
                 error_type: SystemErrorType::NotFound,
@@ -135,7 +135,6 @@ impl RootContract {
             submit_settlement,
         })
     }
-
     fn to_state_data(&self) -> Vec<u8> {
         let mut state_data = Vec::new();
         state_data.extend_from_slice(&self.epoch.to_le_bytes());

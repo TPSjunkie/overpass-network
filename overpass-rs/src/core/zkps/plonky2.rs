@@ -1,3 +1,5 @@
+// ./src/core/zkps/proof.rs
+
 use plonky2::{
     field::goldilocks_field::GoldilocksField,
     iop::{
@@ -9,7 +11,8 @@ use plonky2::{
         circuit_data::{CircuitConfig, CircuitData},
         config::PoseidonGoldilocksConfig,
         proof::ProofWithPublicInputs,
-    }, util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer},
+    },
+    util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer},
 };
 use plonky2_field::types::Field;
 use std::rc::Rc;
@@ -82,6 +85,14 @@ impl Plonky2SystemHandle {
     }
 }
 
+impl Default for Plonky2System {
+    fn default() -> Self {
+        Self {
+            circuit_config: CircuitConfig::standard_recursion_config(),
+            state_transition_circuit: StateTransitionCircuitData::default(),
+        }
+    }
+}
 impl Plonky2System {
     pub fn generate_proof(
         &self,
@@ -136,7 +147,12 @@ pub struct StateTransitionCircuitData {
 impl Default for StateTransitionCircuitData {
     fn default() -> Self {
         Self {
-            circuit_data: CircuitData::from_bytes(&[], &DefaultGateSerializer, &DefaultGeneratorSerializer::<C, D>::default()).expect("Failed to create default CircuitData"),
+            circuit_data: CircuitData::from_bytes(
+                &[],
+                &DefaultGateSerializer,
+                &DefaultGeneratorSerializer::<C, D>::default(),
+            )
+            .expect("Failed to create default CircuitData"),
             old_balance_target: Target::default(),
             old_nonce_target: Target::default(),
             new_balance_target: Target::default(),

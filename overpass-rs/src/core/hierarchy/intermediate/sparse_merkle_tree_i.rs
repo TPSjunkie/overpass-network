@@ -1,5 +1,6 @@
 use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::types::boc::{Cell, CellType, BOC};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
+use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
@@ -30,6 +31,7 @@ pub struct MerkleNode {
     pub is_leaf: bool,
     pub is_virtual: bool,
     pub is_empty: bool,
+    pub(crate) data: Option<Vec<u8>>,
 }
 
 /// Sparse Merkle Tree Implementation
@@ -209,13 +211,7 @@ impl SparseMerkleTreeI {
             if let Some(right) = node.right {
                 node_data.extend_from_slice(&right);
             }
-            let cell = Cell::new(
-                node_data,
-                vec![],
-                CellType::Ordinary,
-                *hash,
-                None,
-            );
+            let cell = Cell::new(node_data, vec![], CellType::Ordinary, *hash, None);
             node_cells.push(cell);
         }
 

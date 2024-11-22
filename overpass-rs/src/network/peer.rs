@@ -43,14 +43,14 @@ impl Peer {
 
     /// Checks if the peer is still connected.
     pub fn is_connected(&self) -> bool {
-        !self.sender.is_disconnected()
+        self.sender.send(Message::Ping()).is_ok()
     }
 }
 
 impl Drop for Peer {
     fn drop(&mut self) {
         // Close channels explicitly
-        let _ = self.sender.send(Message::Disconnect);
+        let _ = self.sender.send(Message::Disconnect());
 
         // Drop the sender and receiver, which will close the channels
         drop(self.sender.clone());

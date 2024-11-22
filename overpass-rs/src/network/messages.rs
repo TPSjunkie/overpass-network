@@ -1,5 +1,5 @@
 // src/network/messages.rs
-use crate::core::types::ChallengeResponse;
+
 use js_sys::Date;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -40,7 +40,7 @@ pub enum NetworkMessage {
     /// A message used to request a challenge from a node.
     ChallengeRequest([u8; 32]),
     /// A message used to respond to a challenge request.
-    ChallengeResponse(ChallengeResponse),
+    ChallengeResponse(Box<NetworkMessage>),
 }
 
 #[wasm_bindgen]
@@ -83,8 +83,11 @@ impl NetworkState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct StorageNodeStateUpdate {
+    #[wasm_bindgen(skip)]
     pub node_id: Vec<u8>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageNodeState {
     /// The node's ID.
     pub node_id: [u8; 32],
@@ -98,7 +101,7 @@ pub struct StorageNodeState {
     pub status: NodeStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
 #[wasm_bindgen]
 pub enum NodeStatus {
     Online,
@@ -106,6 +109,7 @@ pub enum NodeStatus {
     Syncing,
     Error,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct NodeState {
@@ -123,7 +127,8 @@ pub struct ChannelState {
     pub timestamp: f64,
     pub status: ChannelStatus,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+
+#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
 #[wasm_bindgen]
 pub enum ChannelStatus {
     Open,

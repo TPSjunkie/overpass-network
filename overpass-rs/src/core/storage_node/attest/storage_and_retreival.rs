@@ -1,17 +1,43 @@
-// ./src/core/storage_node/verification/storage_and_retrieval.rs
-
-// Storage and Retrieval Verification
-// This module is the entry point for accessing the storage nodes' storage and retrieval capabilities.
-// It provides methods for storing and retrieving data, as well as verifying the proofs provided by the storage nodes.
-
 use crate::core::error::errors::{SystemError, SystemErrorType};
-use crate::core::storage_node::storage_node_contract::StorageNode;
+use crate::core::storage_node::storage_node_config::{
+    BatteryConfig, EpidemicProtocolConfig, NetworkConfig, StorageNodeConfig, SyncConfig,
+};
+use serde::{Deserialize, Serialize};
 use crate::core::types::boc::BOC;
+use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
 use crate::core::zkps::proof::ZkProof;
+use plonky2::field::goldilocks_field::GoldilocksField;
+use plonky2::hash::hash_types::RichField;
+use plonky2::plonk::circuit_data::CircuitConfig;
+use plonky2_field::extension::Extendable;
 use std::sync::Arc;
 
-#[derive(Clone)]
-pub struct StorageAndRetrievalManager {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageAndRetrievalMetrics {
+    pub store_boc: u64,
+    pub store_proof: u64,
+    pub retrieve_boc: u64,
+    pub retrieve_proof: u64,
+    pub verification_count: u64,
+    pub verification_success: u64,
+    pub verification_failure: u64,
+}
+
+impl Default for StorageAndRetrievalMetrics {
+    fn default() -> Self {
+        Self {
+            store_boc: 0,
+            store_proof: 0,
+            retrieve_boc: 0,
+            retrieve_proof: 0,
+            verification_count: 0,
+            verification_success: 0,
+            verification_failure: 0,
+        }
+    }
+}
+
+pub struct StorageAndRetrievalManager<F: RichField + Extendable<2>> {
     storage_node: Arc<StorageNode>,
     metrics: StorageAndRetrievalMetrics,
     store_boc: bool,
@@ -19,97 +45,284 @@ pub struct StorageAndRetrievalManager {
     retrieve_boc: bool,
     retrieve_proof: bool,
     verify_proof: bool,
+    circuit_config: CircuitConfig,
+    _marker: std::marker::PhantomData<F>,
 }
 
-impl StorageAndRetrievalManager {
+impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
     pub fn new(storage_node: Arc<StorageNode>) -> Self {
         Self {
             storage_node,
-            metrics: StorageAndRetrievalMetrics {
-                store_boc: 0,
-                store_proof: 0,
-                retrieve_boc: 0,
-                retrieve_proof: 0,
-            },
+            metrics: StorageAndRetrievalMetrics::default(),
             store_boc: true,
             store_proof: true,
             retrieve_boc: true,
             retrieve_proof: true,
             verify_proof: true,
+            circuit_config: CircuitConfig::standard_recursion_config(),
+            _marker: std::marker::PhantomData,
         }
     }
 
-    // Stores the data in the storage node.
-    pub async fn store_data(&self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
+    pub async fn store_data(&mut self, boc: BOC, proof: ZkProof) -> Result<(), SystemError> {
+        if !self.store_boc && !self.store_proof {
+            return Err(SystemError::new(
+                SystemErrorType::OperationDisabled,
+                "Both BOC and proof storage are disabled".to_string(),
+            ));
+        }
+
+        if self.verify_proof {
+            self.verify_proof(&proof).await?;
+        }
+
         if self.store_boc {
             self.storage_node
-                .store_data(&boc)
+                .stored_bocs
+                .lock()
                 .await
-                .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))?;
+                .insert(boc.hash(), boc.clone());
             self.metrics.store_boc += 1;
         }
+
         if self.store_proof {
             self.storage_node
-                .store_proof(&proof)
+                .stored_proofs
+                .lock()
                 .await
-                .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))?;
+                .insert(proof.hash(), proof);
             self.metrics.store_proof += 1;
         }
+
         Ok(())
     }
 
-    // Retrieves the data from the storage node.
     pub async fn retrieve_data(&self, boc_id: &[u8; 32]) -> Result<BOC, SystemError> {
-        if self.retrieve_boc {
-            self.storage_node
-                .retrieve_data(boc_id)
-                .await
-                .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))
-        } else {
-            Err(SystemError::new(
-                SystemErrorType::InvalidAmount,
-                "Storage and retrieval verification is disabled".to_string(),
-            ))
+        if !self.retrieve_boc {
+            return Err(SystemError::new(
+                SystemErrorType::OperationDisabled,
+                "BOC retrieval is disabled".to_string(),
+            ));
         }
+
+        let boc = self
+            .storage_node
+            .stored_bocs
+            .lock()
+            .await
+            .get(boc_id)
+            .cloned()
+            .ok_or_else(|| {
+                SystemError::new(SystemErrorType::StorageError, "BOC not found".to_string())
+            })?;
+
+        self.metrics.retrieve_boc += 1;
+        Ok(boc)
     }
 
-    // Retrieves the proof from the storage node.
     pub async fn retrieve_proof(&self, proof_id: &[u8; 32]) -> Result<ZkProof, SystemError> {
-        if self.retrieve_proof {
-            self.storage_node
-                .retrieve_proof(proof_id)
-                .await
-                .map_err(|e| SystemError::new(SystemErrorType::InvalidAmount, e.to_string()))
+        if !self.retrieve_proof {
+            return Err(SystemError::new(
+                SystemErrorType::OperationDisabled,
+                "Proof retrieval is disabled".to_string(),
+            ));
+        }
+
+        let proof = self
+            .storage_node
+            .stored_proofs
+            .lock()
+            .await
+            .get(proof_id)
+            .cloned()
+            .ok_or_else(|| {
+                SystemError::new(SystemErrorType::StorageError, "Proof not found".to_string())
+            })?;
+
+        self.metrics.retrieve_proof += 1;
+        Ok(proof)
+    }
+
+    pub async fn verify_proof(&self, proof: &ZkProof) -> Result<bool, SystemError> {
+        if !self.verify_proof {
+            return Err(SystemError::new(
+                SystemErrorType::OperationDisabled,
+                "Proof verification is disabled".to_string(),
+            ));
+        }
+
+        self.metrics.verification_count += 1;
+
+        let mut circuit_builder = ZkCircuitBuilder::<F, 2>::new(self.circuit_config.clone());
+
+        let circuit = circuit_builder
+            .build_verification_circuit(proof)
+            .map_err(|e| {
+                self.metrics.verification_failure += 1;
+                SystemError::new(
+                    SystemErrorType::CircuitError,
+                    format!("Failed to build verification circuit: {:?}", e),
+                )
+            })?;
+
+        let result = circuit.verify_proof(proof).map_err(|e| {
+            self.metrics.verification_failure += 1;
+            SystemError::new(
+                SystemErrorType::VerificationError,
+                format!("Proof verification failed: {:?}", e),
+            )
+        })?;
+
+        if result {
+            self.metrics.verification_success += 1;
         } else {
-            Err(SystemError::new(
-                SystemErrorType::InvalidAmount,
-                "Storage and retrieval verification is disabled".to_string(),
-            ))
+            self.metrics.verification_failure += 1;
         }
+
+        Ok(result)
+    }
+
+    pub fn get_metrics(&self) -> StorageAndRetrievalMetrics {
+        self.metrics.clone()
+    }
+
+    pub fn set_metrics(&mut self, metrics: StorageAndRetrievalMetrics) {
+        self.metrics = metrics;
+    }
+
+    pub fn set_verify_proof(&mut self, verify_proof: bool) {
+        self.verify_proof = verify_proof;
+    }
+
+    pub fn set_store_boc(&mut self, store_boc: bool) {
+        self.store_boc = store_boc;
+    }
+
+    pub fn set_store_proof(&mut self, store_proof: bool) {
+        self.store_proof = store_proof;
+    }
+
+    pub fn set_retrieve_boc(&mut self, retrieve_boc: bool) {
+        self.retrieve_boc = retrieve_boc;
+    }
+
+    pub fn set_retrieve_proof(&mut self, retrieve_proof: bool) {
+        self.retrieve_proof = retrieve_proof;
+    }
+
+    pub fn set_circuit_config(&mut self, config: CircuitConfig) {
+        self.circuit_config = config;
+    }
+    
+    pub fn storage_node(&self) -> & {
+        &self.storage_node
     }
 }
 
-#[derive(Clone)]
-pub struct StorageAndRetrievalMetrics {
-    pub store_boc: u64,
-    pub store_proof: u64,
-    pub retrieve_boc: u64,
-    pub retrieve_proof: u64,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use wasm_bindgen_test::*;
 
-impl StorageAndRetrievalMetrics {
-    pub fn new() -> Self {
-        Self {
-            store_boc: 0,
-            store_proof: 0,
-            retrieve_boc: 0,
-            retrieve_proof: 0,
-        }
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    type F = GoldilocksField;
+
+    async fn setup_storage_and_retrieval() -> StorageAndRetrievalManager<F> {
+        let storage_node = Arc::new(
+            StorageNode::new(
+                [0u8; 32],
+                0,
+                StorageNodeConfig {
+                    battery_config: BatteryConfig::default(),
+                    sync_config: SyncConfig::default(),
+                    epidemic_protocol_config: EpidemicProtocolConfig::default(),
+                    network_config: NetworkConfig::default(),
+                    node_id: [0u8; 32],
+                    fee: 0,
+                    whitelist: HashSet::new(),
+                },
+            )
+            .unwrap(),
+        );
+
+        StorageAndRetrievalManager::new(storage_node)
     }
-}
 
-impl Default for StorageAndRetrievalMetrics {
-    fn default() -> Self {
-        Self::new()
+    async fn create_test_data() -> (BOC, ZkProof) {
+        let boc = BOC::new();
+        let proof = ZkProof::new_test();
+        (boc, proof)
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_storage_and_retrieval() {
+        let mut manager = setup_storage_and_retrieval().await;
+        let (boc, proof) = create_test_data().await;
+
+        let result = manager.store_data(boc.clone(), proof.clone()).await;
+        assert!(result.is_ok());
+
+        let retrieved_boc = manager.retrieve_data(&boc.hash()).await;
+        assert!(retrieved_boc.is_ok());
+        assert_eq!(retrieved_boc.unwrap().hash(), boc.hash());
+
+        let retrieved_proof = manager.retrieve_proof(&proof.hash()).await;
+        assert!(retrieved_proof.is_ok());
+        assert_eq!(retrieved_proof.unwrap().hash(), proof.hash());
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_error_handling() {
+        let mut manager = setup_storage_and_retrieval().await;
+
+        manager.set_store_boc(false);
+        manager.set_store_proof(false);
+
+        let (boc, proof) = create_test_data().await;
+        let result = manager.store_data(boc, proof).await;
+        assert!(result.is_err());
+
+        let result = manager.retrieve_data(&[1u8; 32]).await;
+        assert!(result.is_err());
+
+        let result = manager.retrieve_proof(&[1u8; 32]).await;
+        assert!(result.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_verification() {
+        let mut manager = setup_storage_and_retrieval().await;
+        let (_, proof) = create_test_data().await;
+
+        let result = manager.verify_proof(&proof).await;
+        assert!(result.is_ok());
+
+        let metrics = manager.get_metrics();
+        assert!(metrics.verification_count > 0);
+        assert!(metrics.verification_success > 0);
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_metrics() {
+        let mut manager = setup_storage_and_retrieval().await;
+        let (boc, proof) = create_test_data().await;
+
+        manager
+            .store_data(boc.clone(), proof.clone())
+            .await
+            .unwrap();
+        manager.retrieve_data(&boc.hash()).await.unwrap();
+        manager.retrieve_proof(&proof.hash()).await.unwrap();
+        manager.verify_proof(&proof).await.unwrap();
+
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.store_boc, 1);
+        assert_eq!(metrics.store_proof, 1);
+        assert_eq!(metrics.retrieve_boc, 1);
+        assert_eq!(metrics.retrieve_proof, 1);
+        assert!(metrics.verification_count > 0);
+        assert!(metrics.verification_success > 0);
     }
 }

@@ -1,18 +1,15 @@
 // ./src/core/hierarchy/root/sparse_merkle_tree_r.rs
-
-use sha2::Digest;
-use frame_support::Serialize;
 use crate::core::error::errors::{SystemError, SystemErrorType};
+use crate::core::hierarchy::client::channel::channel_contract::{Cell, CellType};
 use crate::core::hierarchy::intermediate::sparse_merkle_tree_i::MerkleNode;
-use crate::core::types::boc::{Cell, CellType, BOC};
+use crate::core::types::boc::BOC;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::iop::target::Target;
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::types::Field;
-use sha2::Sha256;
+use sha2::Digest;
 use std::collections::HashMap;
-
 /// Root Tree Trait
 pub trait RootTreeManagerTrait {
     /// Add a new cell to the tree  
@@ -195,7 +192,7 @@ impl SparseMerkleTreeR {
     pub fn serialize_to_boc(&self) -> Result<BOC, SystemError> {
         let root_cell = Cell::new(vec![], vec![], CellType::Ordinary, self.root_hash, None);
         let mut node_cells = Vec::new();
-            
+
         for (hash, node) in &self.nodes {
             let mut node_refs = Vec::new();
             if let Some(left) = node.left {
@@ -204,8 +201,14 @@ impl SparseMerkleTreeR {
             if let Some(right) = node.right {
                 node_refs.push(self.hash_to_index(&right)?);
             }
-            node_cells.push(Cell::new(vec![], node_refs, CellType::Ordinary, *hash, None));
-        }        
+            node_cells.push(Cell::new(
+                vec![],
+                node_refs,
+                CellType::Ordinary,
+                *hash,
+                None,
+            ));
+        }
         Ok(BOC::new())
     }
 

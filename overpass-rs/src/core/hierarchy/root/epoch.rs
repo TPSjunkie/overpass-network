@@ -61,7 +61,12 @@ impl Epoch {
 
     /// Creates a new epoch from the given parameters.
     /// Returns an error if the parameters are invalid.
-    pub fn new(epoch_number: u64, start_time: u64, end_time: u64, state: EpochStatus) -> Result<Self, &'static str> {
+    pub fn new(
+        epoch_number: u64,
+        start_time: u64,
+        end_time: u64,
+        state: EpochStatus,
+    ) -> Result<Self, &'static str> {
         if end_time != 0 && end_time < start_time {
             return Err("End time cannot be before start time");
         }
@@ -71,7 +76,7 @@ impl Epoch {
         if end_time != 0 && matches!(state, EpochStatus::Active) {
             return Err("Active epoch cannot have an end time");
         }
-        
+
         Ok(Self {
             epoch_number,
             start_time,
