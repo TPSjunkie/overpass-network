@@ -87,12 +87,12 @@ impl RootContract {
         Ok(true)
     }
     pub fn deserialize(boc: BOC) -> Result<Self, SystemError> {
-        let root_cell = boc.get_root_cell().ok_or(SystemError {
+        let root_cell = boc.roots.first().ok_or(SystemError {
             error_type: SystemErrorType::NotFound,
             message: "Empty BOC".to_string(),
         })?;
 
-        let state_data = root_cell.get_data();
+        let state_data = root_cell;
         if state_data.len() < 26 {
             return Err(SystemError {
                 error_type: SystemErrorType::NotFound,
@@ -135,7 +135,6 @@ impl RootContract {
             submit_settlement,
         })
     }
-
     fn to_state_data(&self) -> Vec<u8> {
         let mut state_data = Vec::new();
         state_data.extend_from_slice(&self.epoch.to_le_bytes());

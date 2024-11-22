@@ -46,7 +46,9 @@ impl Transport {
 
     /// Sends a message to the specified address.
     pub async fn send(&self, message: Message) -> Result<(), JsValue> {
-        let bytes = message.to_bytes();
+        let bytes = message
+            .to_bytes()
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let array = js_sys::Uint8Array::from(&bytes[..]);
         self.socket.send_with_u8_array(&array)
     }

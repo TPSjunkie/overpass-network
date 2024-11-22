@@ -2,15 +2,14 @@ use crate::core::error::errors::{SystemError, SystemErrorType};
 use crate::core::storage_node::storage_node_config::{
     BatteryConfig, EpidemicProtocolConfig, NetworkConfig, StorageNodeConfig, SyncConfig,
 };
-use crate::core::storage_node::storage_node_contract::StorageNode;
+use serde::{Deserialize, Serialize};
 use crate::core::types::boc::BOC;
-use crate::core::zkps::circuit_builder::{Circuit, ZkCircuitBuilder};
+use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
 use crate::core::zkps::proof::ZkProof;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::hash::hash_types::RichField;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2_field::extension::Extendable;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,6 +212,10 @@ impl<F: RichField + Extendable<2>> StorageAndRetrievalManager<F> {
 
     pub fn set_circuit_config(&mut self, config: CircuitConfig) {
         self.circuit_config = config;
+    }
+    
+    pub fn storage_node(&self) -> & {
+        &self.storage_node
     }
 }
 
