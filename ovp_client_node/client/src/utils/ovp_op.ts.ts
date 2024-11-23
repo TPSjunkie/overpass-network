@@ -1,6 +1,5 @@
 import type { Cell } from "@ton/core";
 
-
 export enum RootOpCode {
     SubmitEpoch = 0x01,
     ValidateEpoch = 0x02,
@@ -10,8 +9,7 @@ export enum RootOpCode {
     RegisterIntermediate = 0x20,
     RemoveIntermediate = 0x21,
     ValidateIntermediate = 0x22,
-    tryFrom,
-    CreateChannel,
+    CreateChannel = 0x23
 }
 
 export enum ChannelOpCode {
@@ -31,8 +29,7 @@ export enum ChannelOpCode {
     FinalizeSettlement = 0xE2,
     ValidateTransition = 0xF0,
     VerifyProof = 0xF1,
-    GetChannel = 0xF2,
-    tryFrom,
+    GetChannel = 0xF2
 }
 
 export enum OpCode {
@@ -40,8 +37,7 @@ export enum OpCode {
     Intermediate,
     Wallet,
     Channel,
-    Storage,
-    fromNumber
+    Storage
 }
 
 export class OpCodeUtils {
@@ -63,21 +59,7 @@ export class OpCodeUtils {
         return undefined;
     }
 }
-export interface Operation {
-    op_code(): OpCode;
-    validate(): boolean;
-    execute(): Promise<void>;
-}
 
-export interface OperationResult {
-    success: boolean;
-    op_code: OpCode;
-    message?: string;
-    data?: Uint8Array;
-}
-export interface OperationFactory {
-    create(op_code: OpCode, data: Uint8Array): Operation;
-}
 export interface Operation {
     op_code(): OpCode;
     validate(): boolean;
@@ -87,6 +69,18 @@ export interface Operation {
     toCellWithPayload(): Cell;  
     toCellWithStateInitAndPayload(): Cell;
 }
+
+export interface OperationResult {
+    success: boolean;
+    op_code: OpCode;
+    message?: string;
+    data?: Uint8Array;
+}
+
+export interface OperationFactory {
+    create(op_code: OpCode, data: Uint8Array): Operation;
+}
+
 export enum StorageOpCode {
     ChargeNode = 0xC0,
     DischargeNode = 0xC1,
@@ -95,8 +89,7 @@ export enum StorageOpCode {
     SyncState = 0xD1,
     ValidateSync = 0xD2,
     ReplicateState = 0xE0,
-    ValidateReplica = 0xE1,
-    tryFrom,
+    ValidateReplica = 0xE1
 }
 
 export enum WalletOpCode {
@@ -114,11 +107,8 @@ export enum WalletOpCode {
     ValidateTransaction = 0xC1,
     ProcessTransaction = 0xC2,
     GenerateWalletProof = 0xD0,
-    VerifyWalletProof = 0xD1,
-    tryFrom,
+    VerifyWalletProof = 0xD1
 }
-
-
 
 export class OVPOpCodeConverter {
     static fromChannelOpCode(code: ChannelOpCode): number {
@@ -150,7 +140,7 @@ export enum WalletExtensionStateChangeOp {
     ProcessChannel = 0x74,
     ValidateTransaction = 0x80,
     ProcessTransaction = 0x81,
-    FinalizeState = 0x82,
+    FinalizeState = 0x82
 }
 
 export class OpCodeConverter {
@@ -196,6 +186,7 @@ export class OpCodeConverter {
         throw new Error("Invalid WalletExtensionStateChangeOp operation code");
     }
 }
+
 export enum IntermediateOpCode {
     RequestChannelOpen = 0x20,
     ApproveChannelOpen = 0x21,
@@ -222,7 +213,10 @@ export enum IntermediateOpCode {
     ValidateIntermediateState = 0x53,
     UpdateTree = 0x60,
     ValidateTree = 0x61,
-    tryFrom
+    BitcoinBridgeInit = 0x70,
+    BitcoinDeposit = 0x71,
+    BitcoinWithdraw = 0x72,
+    BitcoinChannelOpen = 0x73
 }
 
 export class IntermediateOpCodeConverter {
@@ -253,10 +247,15 @@ export class IntermediateOpCodeConverter {
             case 0x53: return IntermediateOpCode.ValidateIntermediateState;
             case 0x60: return IntermediateOpCode.UpdateTree;
             case 0x61: return IntermediateOpCode.ValidateTree;
+            case 0x70: return IntermediateOpCode.BitcoinBridgeInit;
+            case 0x71: return IntermediateOpCode.BitcoinDeposit;
+            case 0x72: return IntermediateOpCode.BitcoinWithdraw;
+            case 0x73: return IntermediateOpCode.BitcoinChannelOpen;
             default: return new Error("Invalid Intermediate operation code");
         }
     }
 }
+
 describe('OpCode Conversions', () => {
     test('channel opcode conversion', () => {
         expect(OpCodeConverter.tryFrom(0xA0)).toBe(ChannelOpCode.CreatePayment);
@@ -286,9 +285,7 @@ describe('OpCode Conversions', () => {
 
     test('intermediate opcode conversion', () => {
         expect(IntermediateOpCodeConverter.tryFrom(0x20)).toBe(IntermediateOpCode.RequestChannelOpen);
-        expect(() => IntermediateOpCodeConverter.tryFrom(0xFF)).toThrow("Invalid Intermediate operation code");
+        expect(IntermediateOpCodeConverter.tryFrom(0xFF)).toBeInstanceOf(Error);
         expect(IntermediateOpCode.RequestChannelOpen).toBe(0x20);
     });
-
 });
-

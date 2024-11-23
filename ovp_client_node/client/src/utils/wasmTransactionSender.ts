@@ -133,7 +133,29 @@ export class WasmTransactionSender {
         throw error;
       }
     }
-
+    public async initializeBitcoinBridge(): Promise<void> {
+      await this.initializeWasmModule();
+      if (!wasmInstance) {
+        throw new Error('WASM module not initialized');
+      }
+      // Initialize Bitcoin bridge components
+    }
+    public async sendTransaction(transaction: Transaction, params: ChannelTransactionParams): Promise<void> {
+      await this.initializeWasmModule();
+      if (!wasmInstance) {
+        throw new Error('WASM module not initialized');
+      }
+      // Send transaction through WASM
+      try {
+        const result = wasmInstance.send_transaction(transaction.to, transaction.amount, transaction.payload, transaction.channelId, transaction.groupId, transaction.transactionType);
+        if (result !== 0) {
+          throw new WasmError('Failed to send transaction');
+        }
+      } catch (error) {
+        console.error('Error sending transaction:', error);
+        throw error;
+      }
+    }
     private async initializeWasmModule(): Promise<void> {
       if (this.wasmModuleInitialized) return;
     
@@ -214,3 +236,4 @@ private createCell(params: ChannelTransactionParams): typeof Cell {
     return cell.endCell();
   }
 }
+
