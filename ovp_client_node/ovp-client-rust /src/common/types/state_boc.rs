@@ -76,12 +76,6 @@ impl STATEBOC {
         self.hash = Some(hash);
     }
 
-    /// state_init 
-    pub fn set_state_init(&mut self, state_init: StateInit) {
-        self.state_init = state_init;
-    }
-
-
     pub fn set_state_cells(&mut self, state_cells: Vec<Vec<u8>>) {
         self.state_cells = state_cells;
     }
@@ -122,7 +116,6 @@ impl STATEBOC {
         hasher.finalize().into()
     }
 }
-
 impl Default for STATEBOC {
     fn default() -> Self {
         Self::new()

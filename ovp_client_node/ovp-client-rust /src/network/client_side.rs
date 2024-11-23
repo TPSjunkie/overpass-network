@@ -1,11 +1,10 @@
-// ./src/network/client_side.rs
-
-use crate::common::error::client_errors::{Error, SystemError, SystemErrorType};
+use crate::common::error::client_errors::{SystemError, SystemErrorType};
 use bitcoincore_rpc::bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use url::Url;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
@@ -33,7 +32,7 @@ impl Default for NetworkConfig {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ClientSideNetworkConnection {
     config: Arc<NetworkConfig>,
     connection_state: Arc<RwLock<ConnectionState>>,
@@ -46,6 +45,63 @@ pub struct ConnectionState {
     last_error: Option<String>,
 }
 
+#[derive(Debug, Error)]
+pub enum NetworkError {
+    #[error("Connection failed: {0}")]
+    ConnectionFailed(String),
+
+    #[error("Authentication failed")]
+    AuthenticationFailed,
+
+    #[error("Network timeout after {0} seconds")]
+    Timeout(u64),
+
+    #[error("Deserialization error: {0}")]
+    DeserializationError(String),
+
+    #[error("Invalid network configuration: {0}")]
+    InvalidConfiguration(String),
+
+    #[error("Protocol error: {0}")]
+    ProtocolError(String),
+
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
+
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+}
+
+impl From<NetworkError> for SystemError {
+    fn from(err: NetworkError) -> Self {
+        match err {
+            NetworkError::ConnectionFailed(msg) => SystemError::new(SystemErrorType::NetworkError, msg),
+            NetworkError::AuthenticationFailed => {
+                SystemError::new(SystemErrorType::NetworkError, "Authentication failed".to_string())
+            }
+            NetworkError::Timeout(secs) => SystemError::new(
+                SystemErrorType::NetworkError,
+                format!("Network timeout after {} seconds", secs),
+            ),
+            NetworkError::DeserializationError(msg) => {
+                SystemError::new(SystemErrorType::SerializationError, msg)
+            }
+            NetworkError::InvalidConfiguration(msg) => {
+                SystemError::new(SystemErrorType::InvalidInput, msg)
+            }
+            NetworkError::ProtocolError(msg) => {
+                SystemError::new(SystemErrorType::ProofError, msg)
+            }
+            NetworkError::InvalidResponse(msg) => {
+                SystemError::new(SystemErrorType::InvalidInput, msg)
+            }
+            NetworkError::InvalidRequest(msg) => {
+                SystemError::new(SystemErrorType::InvalidInput, msg)
+            }
+        }
+    }
+}
+
 impl ConnectionState {
     fn new() -> Self {
         Self {
@@ -54,6 +110,14 @@ impl ConnectionState {
             last_error: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConnectionStatus {
+    pub is_connected: bool,
+    pub retry_count: u32,
+    pub last_error: Option<String>,
+    pub network: Network,
 }
 
 impl ClientSideNetworkConnection {
@@ -78,7 +142,6 @@ impl ClientSideNetworkConnection {
             ));
         }
 
-        // Attempt connection with retry logic
         for attempt in 0..self.config.max_retries {
             match self.try_connect().await {
                 Ok(_) => {
@@ -115,7 +178,6 @@ impl ClientSideNetworkConnection {
             return Ok(());
         }
 
-        // Perform cleanup and disconnection
         state.is_connected = false;
         state.retry_count = 0;
         state.last_error = None;
@@ -141,13 +203,10 @@ impl ClientSideNetworkConnection {
         self.config.clone()
     }
 
-    // Private helper methods
-    async fn try_connect(&self) -> Result<(), SystemError> {
+    async fn try_connect(&self) -> Result<(), NetworkError> {
         // Implement actual connection logic here
-        // This could include setting up TLS, authentication, etc.
-        
+        // This is a placeholder for the actual implementation
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        
         Ok(())
     }
 
@@ -161,33 +220,6 @@ impl ClientSideNetworkConnection {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ConnectionStatus {
-    pub is_connected: bool,
-    pub retry_count: u32,
-    pub last_error: Option<String>,
-    pub network: Network,
-}
-
-// Error types specific to network operations
-#[derive(Debug, thiserror::Error)]
-pub enum NetworkError {
-    #[error("Connection failed: {0}")]
-    ConnectionFailed(String),
-    
-    #[error("Authentication failed")]
-    AuthenticationFailed,
-    
-    #[error("Network timeout after {0} seconds")]
-    Timeout(u64),
-    
-    #[error("Invalid network configuration: {0}")]
-    InvalidConfiguration(String),
-    
-    #[error("Protocol error: {0}")]
-    ProtocolError(String),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,14 +230,9 @@ mod tests {
         let config = NetworkConfig::default();
         let connection = ClientSideNetworkConnection::new(config);
 
-        // Test initial state
         assert!(!connection.is_connected().await);
-
-        // Test successful connection
         assert!(connection.connect().await.is_ok());
         assert!(connection.is_connected().await);
-
-        // Test disconnection
         assert!(connection.disconnect().await.is_ok());
         assert!(!connection.is_connected().await);
     }
@@ -222,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn test_url_validation() {
+    async fn test_url_validation() {
         assert!(ClientSideNetworkConnection::validate_url("http://localhost:8332"));
         assert!(ClientSideNetworkConnection::validate_url("https://example.com:8333"));
         assert!(!ClientSideNetworkConnection::validate_url("invalid-url"));

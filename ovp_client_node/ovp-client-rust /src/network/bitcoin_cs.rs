@@ -1,10 +1,10 @@
+use async_trait::async_trait;
 use crate::core::client::channel::channel_contract::Transaction;
 use crate::network::traits::NetworkConnection;
 use crate::common::error::client_errors::Result as NetworkResult;
 use crate::common::types::state_boc::StateInit;
 
-use super::api::NetworkApi;
-
+use super::api::network::client_side::{NetworkApi, NetworkConfig};
 pub struct BitcoinCS {
     url: String,
     port: u16,
@@ -15,9 +15,14 @@ pub struct BitcoinCS {
 
 impl BitcoinCS {
     pub fn new(url: String, port: u16, username: String, password: String) -> Self {
-        let api = NetworkApi::new(
-            format!("{}:{}", url.clone(), port),
-        );
+        let config = NetworkConfig {
+            url: format!("{}:{}", url.clone(), port),
+            username: username.clone(),
+            password: password.clone(),
+            network: "bitcoin".to_string(),
+            port,
+        };
+        let api = NetworkApi::new(config);
 
         Self {
             url,
