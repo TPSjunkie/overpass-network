@@ -9,8 +9,7 @@ use bitcoin::key::{PrivateKey, PublicKey};
 use bitcoin::opcodes::all as opcodes;
 use bitcoin::secp256k1::{All, Message, Secp256k1};
 use bitcoin::Network;
-use bitcoin::XOnlyPublicKey;
-use bitcoin::{Address, Amount};
+use secp256k1::XOnlyPublicKey;use bitcoin::{Address, Amount};
 use bitcoincore_rpc::{self, Auth, Client as RpcClient, Error as RpcError, RpcApi};
 use std::str::FromStr;
 
@@ -97,19 +96,19 @@ impl TransactionManager {
             .into_script();
         let _htlc_script_pubkey = ScriptBuf::from_bytes(htlc_script.clone().into_bytes());
         let mut tx_outs = vec![TxOut {
-            value: amount,
+            value: amount.to_sat(),
             script_pubkey: htlc_script,
         }];
 
         if change.to_sat() > 0 {
             tx_outs.push(TxOut {
-                value: change,
+                value: change.to_sat(),
                 script_pubkey: sender_address.script_pubkey(),
             });
         }
 
         let transaction = Transaction {
-            version: bitcoin::transaction::Version(2),
+            version: 2,
             lock_time: LockTime::from_height(timelock).unwrap(),
             input: tx_ins,
             output: tx_outs,
@@ -117,7 +116,6 @@ impl TransactionManager {
 
         Ok(transaction)
     }
-
     /// Signs a Bitcoin transaction with the provided private key.
     pub fn sign_transaction(
         &self,
@@ -140,7 +138,7 @@ impl TransactionManager {
                 sighash_cache.legacy_signature_hash(input_index, &script_pubkey, amount_u32)?;
 
             let message =
-                bitcoin::secp256k1::Message::from_digest_slice(&sighash[..]).expect("32 bytes");
+                bitcoin::secp256k1::Message::from_slice(&sighash[..]).expect("32 bytes");
             let signature = self.secp.sign_ecdsa(&message, &private_key.inner);
 
             let mut sig_der = signature.serialize_der().to_vec();

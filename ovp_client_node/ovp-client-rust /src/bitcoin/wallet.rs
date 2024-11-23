@@ -1,7 +1,8 @@
 // src/bitcoin/wallet.rs
 
 use bip39::Mnemonic;
-use bitcoin::bip32::{DerivationPath, Xpriv, Xpub};
+use bitcoin::bip32::DerivationPath;
+use bitcoin::bip32::{ExtendedPrivKey as Xpriv, ExtendedPubKey as Xpub};
 use bitcoin::secp256k1::{All, Secp256k1};
 use bitcoin::Network;
 use bitcoin::{Address, PrivateKey, PublicKey};
@@ -40,7 +41,7 @@ impl WalletManager {
 
         let private_key = PrivateKey {
             compressed: true,
-            network: self.network.into(),
+            network: self.network,
             inner: secret_key,
         };
 
@@ -48,7 +49,7 @@ impl WalletManager {
     }
     /// Derives an address from a public key.
     pub fn derive_address(&self, public_key: &PublicKey) -> Address {
-        Address::p2pkh(public_key.pubkey_hash(), self.network)
+        Address::p2pkh(public_key, self.network)
     }
 
     /// Creates a new HD wallet.
@@ -120,7 +121,7 @@ impl WalletManager {
         let child_xpub = Xpub::from_priv(&self.secp, &child_xpriv);
 
         // Get the public key
-        let public_key = bitcoin::PublicKey::from(child_xpub.public_key);
+        let public_key = PublicKey::new(child_xpub.public_key);
 
         // Derive the address
         let address = self.derive_address(&public_key);
