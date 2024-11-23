@@ -1,4 +1,5 @@
 use bitcoin::Address;
+use bitcoincore_rpc::RpcApi;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
@@ -58,9 +59,8 @@ impl BitcoinRpcClient {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            Ok(self.inner.get_balance()?.to_sat())
+            Ok(self.inner.get_balance(None, None)?.to_sat())
         }
     }
-
     // Add other RPC methods similarly...
 }
