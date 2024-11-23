@@ -1,6 +1,6 @@
 // ./src/network/bitcoin_cs.rs
 
-/// Represents a Bitcoin Cash network connection
+/// Represents a Bitcoin network connection
 /// Implements the ClientSideNetworkConnection trait
 pub struct BitcoinCS {
     /// The URL of the server
@@ -13,7 +13,7 @@ pub struct BitcoinCS {
     pub password: String,
 }
 impl BitcoinCS {
-    /// Create a new Bitcoin Cash network connection
+    /// Create a new Bitcoin network connection
     pub fn new(url: String, port: u16, username: String, password: String) -> Self {
         BitcoinCS {
             url,

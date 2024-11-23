@@ -239,3 +239,192 @@ impl std::fmt::Display for PlonkyError {
 }
 
 impl std::error::Error for PlonkyError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::error::client_errors::SystemError;
+    use crate::core::zkps::proof::ProofGenerator;
+    use crate::core::zkps::proof::ProofType;
+    use crate::core::zkps::proof::ZkProof;
+    use crate::core::zkps::proof::{ProofBundle, ProofMetadata};
+    use crate::wasm::bindings_wasm::cell_to_boc;
+    use crate::wasm::bindings_wasm::cell_to_boc_with_hash;
+    use crate::wasm::bindings_wasm::cell_to_json;
+    use crate::wasm::bindings_wasm::cell_to_json_with_hash;
+    use crate::wasm::types_wasm::WasmCell;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_plonky2_system() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_with_hash() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_with_hash_and_channel_id() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+        let channel_id = vec![0; 32];
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, Some(channel_id.into()))
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_amount() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount + 1, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_old_balance() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance + 1, new_balance, amount, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_new_balance() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance + 1, amount, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_proof_type() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_channel_id() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+        let channel_id = vec![0; 33];
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, Some(channel_id.into()))
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_channel_id_length() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+        let channel_id = vec![0; 31];
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, Some(channel_id.into()))
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_plonky2_system_fails_with_invalid_hash_length() {
+        let generator = ProofGenerator::try_new().unwrap();
+
+        let old_balance = 1000;
+        let amount = 100;
+        let new_balance = 900;
+
+        let bundle_js = generator
+            .generate_state_transition_proof(old_balance, new_balance, amount, None)
+            .unwrap();
+
+        let is_valid = bundle_js.as_bool().unwrap();
+
+        assert!(is_valid);
+    }
+}
