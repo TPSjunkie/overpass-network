@@ -1,5 +1,5 @@
 // src/wasm/conversion_wasm.rs
-use crate::wasm::types_wasm::WasmCell;
+use crate::wasm::types_wasm::{WasmCell, WasmCellType};
 use crate::wasm::bindings_wasm::cell_to_boc;
 use crate::wasm::bindings_wasm::cell_to_json;
 use crate::wasm::bindings_wasm::cell_to_boc_with_hash;
@@ -9,7 +9,8 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct WasmRuntime {
-    inner: wasm_bindgen_test::__rt::detect::Runtime,
+    inner: Vec<i32>,
+    memory: Vec<u8>,
 }
 
 #[wasm_bindgen]
@@ -17,42 +18,44 @@ impl WasmRuntime {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            inner: wasm_bindgen_test::__rt::detect::Runtime::default(),
+            inner: vec![0; 4],
+            memory: Vec::new(),
         }
     }
 
     pub fn get_cell(&self) -> WasmCell {
-        let cell_type = match self.inner.get_value(0) {
-            Some(0) => WasmCell::new_ordinary(),
-            Some(1) => WasmCell::new_pruned_branch(),
-            Some(2) => WasmCell::new_library_reference(),
-            Some(3) => WasmCell::new_merkle_proof(),
-            Some(4) => WasmCell::new_merkle_update(),
-            _ => WasmCell::new_ordinary(), // Default case
+        let cell_type = match self.inner[0] {
+            0 => WasmCellType::Ordinary,
+            1 => WasmCellType::PrunedBranch,
+            2 => WasmCellType::LibraryReference,
+            3 => WasmCellType::MerkleProof,
+            4 => WasmCellType::MerkleUpdate,
+            _ => WasmCellType::Ordinary, // Default case
         };
-        let data = self.inner.get_memory()[..self.inner.get_value(1) as usize].to_vec();
-        let hash = self.inner.get_memory()[self.inner.get_value(1) as usize..(self.inner.get_value(1) + 32) as usize].try_into().unwrap();
-        let depth = self.inner.get_value(2);
-        let is_pruned = self.inner.get_value(3) != 0;
+        let data = self.memory[..self.inner[1] as usize].to_vec();
+        let hash = self.memory[self.inner[1] as usize..(self.inner[1] + 32) as usize].try_into().unwrap();
+        let depth = self.inner[2] as u8;
+        let is_pruned = self.inner[3] != 0;
         WasmCell::new(cell_type, data, hash, depth, is_pruned)
     }
 
     pub fn set_cell(&mut self, cell: WasmCell) {
         let cell_type = match cell.get_cell_type() {
-            WasmCell::Ordinary => 0,
-            WasmCell::PrunedBranch => 1,
-            WasmCell::LibraryReference => 2,
-            WasmCell::MerkleProof => 3,
-            WasmCell::MerkleUpdate => 4,
+            WasmCellType::Ordinary => 0,
+            WasmCellType::PrunedBranch => 1,
+            WasmCellType::LibraryReference => 2,
+            WasmCellType::MerkleProof => 3,
+            WasmCellType::MerkleUpdate => 4,
         };
-        self.inner.set_value(0, cell_type as i32);
-        self.inner.set_value(1, cell.get_data().len() as i32);
-        self.inner.set_value(2, cell.get_depth() as i32);
-        self.inner.set_value(3, cell.is_pruned() as i32);
-        let start_index = self.inner.get_value(1).unwrap_or(0) as usize;
+        self.inner[0] = cell_type;
+        self.inner[1] = cell.get_data().len() as i32;
+        self.inner[2] = cell.get_depth() as i32;
+        self.inner[3] = cell.is_pruned() as i32;
+        let start_index = self.inner[1] as usize;
         let end_index = start_index + cell.get_data().len();
-        self.inner.set_memory(start_index..end_index, cell.get_data());
-        self.inner.set_memory(start_index..start_index + 32, cell.get_hash());
+        self.memory.resize(end_index + 32, 0);
+        self.memory[start_index..end_index].copy_from_slice(cell.get_data());
+        self.memory[end_index..end_index + 32].copy_from_slice(cell.get_hash());
     }
 
     pub fn get_cell_as_boc(&self) -> Vec<u8> {

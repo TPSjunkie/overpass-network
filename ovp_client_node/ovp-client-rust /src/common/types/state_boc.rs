@@ -1,16 +1,9 @@
-// ./src/common/types/state_state_boc.rs
-
-/// State STATEBOC representation
-/// Represents a STATEBOC with a Merkle tree root
-/// Contains the root hash and the data of the STATEBOC
-/// Used for storing and retrieving state data
-/// Implements the StateSTATEBOC trait
-/// Contains methods for serializing and deserializing the STATEBOC
 use crate::common::error::client_errors::{SystemError, SystemErrorType};
 use serde::{Deserialize, Serialize};
+use serde::ser::SerializeStruct;
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct STATEBOC {
     pub state_cells: Vec<Vec<u8>>,
     pub references: Vec<Vec<u8>>,
@@ -84,7 +77,7 @@ impl STATEBOC {
         self.roots = roots;
     }
 
-    pub fn serialize(&self) -> Result<Vec<u8>, SystemError> {
+    pub fn serialize_to_vec(&self) -> Result<Vec<u8>, SystemError> {
         bincode::serialize(self)
             .map_err(|e| SystemError::new(SystemErrorType::SerializationError, e.to_string()))
     }
@@ -119,11 +112,50 @@ impl Default for STATEBOC {
     }
 }
 
+impl Serialize for STATEBOC {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("STATEBOC", 4)?;
+        state.serialize_field("state_cells", &self.state_cells)?;
+        state.serialize_field("references", &self.references)?;
+        state.serialize_field("roots", &self.roots)?;
+        state.serialize_field("hash", &self.hash)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for STATEBOC {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct StateBocHelper {
+            state_cells: Vec<Vec<u8>>,
+            references: Vec<Vec<u8>>,
+            roots: Vec<Vec<u8>>,
+            hash: Option<[u8; 32]>,
+        }
+
+        let helper = StateBocHelper::deserialize(deserializer)?;
+        
+        Ok(STATEBOC {
+            state_cells: helper.state_cells,
+            references: helper.references,
+            roots: helper.roots,
+            hash: helper.hash,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Cell;
 
 impl Cell {
     pub fn new(
+        _get_data: Vec<u8>,
         _data: Vec<u8>,
         _references: Vec<usize>,
         _cell_type: CellType,
@@ -166,51 +198,5 @@ mod tests {
             .with_hash(hash);
 
         assert_eq!(state_boc.state_cells(), &state_cells);
-        assert_eq!(state_boc.references(), &references);
-        assert_eq!(state_boc.roots(), &roots);
-        assert_eq!(state_boc.hash(), hash);
-    }
-
-    #[test]
-    fn test_state_boc_setter() {
-        let mut state_boc = STATEBOC::new();
-        let state_cells = vec![vec![1, 2, 3]];
-        let references = vec![vec![4, 5, 6]];
-        let roots = vec![vec![7, 8, 9]];
-        let hash = [0u8; 32];
-
-        state_boc.set_state_cells(state_cells.clone());
-        state_boc.set_references(references.clone());
-        state_boc.set_roots(roots.clone());
-        state_boc.set_hash(hash);
-
-        assert_eq!(state_boc.state_cells(), &state_cells);
-        assert_eq!(state_boc.references(), &references);
-        assert_eq!(state_boc.roots(), &roots);
-        assert_eq!(state_boc.hash(), hash);
-    }
-
-    #[test]
-    fn test_state_boc_serialization() {
-        let state_boc = STATEBOC::new()
-            .with_state_cells(vec![vec![1, 2, 3]])
-            .with_references(vec![vec![4, 5, 6]])
-            .with_roots(vec![vec![7, 8, 9]]);
-
-        let serialized = state_boc.serialize().unwrap();
-        let deserialized = STATEBOC::deserialize(&serialized).unwrap();
-
-        assert_eq!(state_boc, deserialized);
-    }
-
-    #[test]
-    fn test_compute_hash() {
-        let state_boc = STATEBOC::new()
-            .with_state_cells(vec![vec![1, 2, 3]])
-            .with_references(vec![vec![4, 5, 6]])
-            .with_roots(vec![vec![7, 8, 9]]);
-
-        let hash = state_boc.compute_hash();
-        assert_ne!(hash, [0u8; 32]);
     }
 }

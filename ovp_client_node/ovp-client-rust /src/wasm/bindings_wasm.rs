@@ -16,9 +16,17 @@ pub fn cell_to_boc(cell: &WasmCell) -> Vec<u8> {
         WasmCellType::MerkleUpdate => CellType::Ordinary,
         _ => CellType::Ordinary,
     };
-    let cell_core = Cell::new(cell.get_data().clone(), Vec::new(), cell_type, [0; 32], None);
-    cell_core.get_data().clone()
+    let cell_core = Cell::new(
+        cell.get_data().clone(),
+        Vec::new(),
+        Vec::new(),
+        cell_type,
+        [0; 32],
+        None,
+    );
+    cell_core.to_boc().unwrap_or_default()
 }
+
 #[wasm_bindgen]
 pub fn cell_to_json(cell: &WasmCell) -> String {
     let cell_type = match cell.get_cell_type() {
@@ -29,7 +37,14 @@ pub fn cell_to_json(cell: &WasmCell) -> String {
         WasmCellType::MerkleUpdate => CellType::Ordinary,
         _ => CellType::Ordinary,
     };
-    let cell_core = Cell::new(cell.get_data().clone(), Vec::new(), cell_type, [0; 32], None);
+    let cell_core = Cell::new(
+        cell.get_data().clone(),
+        Vec::new(),
+        Vec::new(),
+        cell_type,
+        [0; 32],
+        None,
+    );
     serde_json::to_string(&CellWrapper(cell_core)).unwrap_or_default()
 }
 
@@ -42,8 +57,15 @@ pub fn cell_to_boc_with_hash(cell: &WasmCell) -> Vec<u8> {
         WasmCellType::MerkleProof => CellType::Ordinary,
         WasmCellType::MerkleUpdate => CellType::Ordinary,
     };
-    let cell_core = Cell::new(cell.get_data().clone(), Vec::new(), cell_type, [0; 32], None);
-    cell_core.get_data().clone() // Simplified for example purposes
+    let cell_core = Cell::new(
+        cell.get_data().clone(),
+        Vec::new(),
+        Vec::new(),
+        cell_type,
+        [0; 32],
+        None,
+    );
+    cell_core.get_data().to_vec() // Simplified for example purposes
 }
 
 #[wasm_bindgen]
@@ -55,7 +77,14 @@ pub fn cell_to_json_with_hash(cell: &WasmCell) -> String {
         WasmCellType::MerkleProof => CellType::Ordinary,
         WasmCellType::MerkleUpdate => CellType::Ordinary,
     };
-    let cell_core = Cell::new(cell.get_data().clone(), Vec::new(), cell_type, [0; 32], None);
+    let cell_core = Cell::new(
+        cell.get_data().clone(),
+        Vec::new(),
+        Vec::new(),
+        cell_type,
+        [0; 32],
+        None,
+    );
     serde_json::to_string(&CellWrapper(cell_core)).unwrap_or_default() // Simplified for example purposes
 }
 

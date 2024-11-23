@@ -165,6 +165,7 @@ impl BitcoinStateConverter {
         boc.add_cell(state_boc::Cell::new(
             lock_data,
             Vec::new(),
+            Vec::new(),
             CellType::Ordinary,
             [0u8; 32],
             None,
@@ -172,12 +173,14 @@ impl BitcoinStateConverter {
         boc.add_cell(state_boc::Cell::new(
             state_data,
             Vec::new(),
+            Vec::new(),
             CellType::Ordinary,
             [0u8; 32],
             None,
         ));
         boc.add_cell(state_boc::Cell::new(
             proof.proof_data.clone(),
+            Vec::new(),
             Vec::new(),
             CellType::Ordinary,
             [0u8; 32],
@@ -192,8 +195,7 @@ impl BitcoinStateConverter {
         boc.set_references(references);
 
         Ok(boc)
-    }
-    /// Verifies state transition within Overpass
+    }    /// Verifies state transition within Overpass
     pub fn verify_state_transition(
         &self,
         prev_state: &OverpassBitcoinState,

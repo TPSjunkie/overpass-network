@@ -190,27 +190,26 @@ impl ChannelContract {
         let boc = self
             .create_state_boc_internal()
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let serialized_boc = boc
-            .serialize()
+        let serialized_boc = bincode::serialize(&boc)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(serialized_boc.into_boxed_slice())
     }
-
     fn create_state_boc_internal(&self) -> Result<STATEBOC, ChannelError> {
         use crate::common::types::state_boc::{Cell, CellType};
         let mut boc = STATEBOC::new();
+        let state_hash = self.calculate_state_hash()?;
         let state_cell = Cell::new(
             self.serialize_state()?,
-            vec![],
+            Vec::new(),
+            Vec::new(),
             CellType::Ordinary,
-            self.calculate_state_hash()?,
+            state_hash,
             None,
         );
         boc.add_cell(state_cell);
         boc.add_root(0);
         Ok(boc)
     }
-
     fn serialize_state(&self) -> Result<Vec<u8>, ChannelError> {
         let mut data = Vec::new();
         data.extend_from_slice(self.id.as_bytes());
