@@ -24,9 +24,8 @@ pub fn cell_to_boc(cell: &WasmCell) -> Vec<u8> {
         [0; 32],
         None,
     );
-    cell_core.to_boc().unwrap_or_default()
+    cell_core.serialize().unwrap_or_default()
 }
-
 #[wasm_bindgen]
 pub fn cell_to_json(cell: &WasmCell) -> String {
     let cell_type = match cell.get_cell_type() {
@@ -65,10 +64,8 @@ pub fn cell_to_boc_with_hash(cell: &WasmCell) -> Vec<u8> {
         [0; 32],
         None,
     );
-    cell_core.get_data().to_vec() // Simplified for example purposes
-}
-
-#[wasm_bindgen]
+    cell_core.get_data().to_vec()
+}#[wasm_bindgen]
 pub fn cell_to_json_with_hash(cell: &WasmCell) -> String {
     let cell_type = match cell.get_cell_type() {
         WasmCellType::Ordinary => CellType::Ordinary,
