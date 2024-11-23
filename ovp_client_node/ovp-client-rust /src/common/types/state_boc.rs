@@ -3,6 +3,17 @@ use serde::{Deserialize, Serialize};
 use serde::ser::SerializeStruct;
 use sha2::{Digest, Sha256};
 
+/// Represents a state init object.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StateInit {
+    /// The code of the contract.
+    pub code: Option<Vec<u8>>,
+    /// The data of the contract.
+    pub data: Option<Vec<u8>>,
+    /// The library of the contract.
+    pub library: Option<Vec<u8>>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct STATEBOC {
     pub state_cells: Vec<Vec<u8>>,
@@ -64,6 +75,12 @@ impl STATEBOC {
     pub fn set_hash(&mut self, hash: [u8; 32]) {
         self.hash = Some(hash);
     }
+
+    /// state_init 
+    pub fn set_state_init(&mut self, state_init: StateInit) {
+        self.state_init = state_init;
+    }
+
 
     pub fn set_state_cells(&mut self, state_cells: Vec<Vec<u8>>) {
         self.state_cells = state_cells;

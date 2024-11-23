@@ -411,3 +411,6 @@ impl fmt::Display for ClientError {
         }
     }
 }
+
+/// Represents a result with a success value and an error value.
+pub type Result<T> = std::result::Result<T, Error>;
