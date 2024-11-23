@@ -1,0 +1,119 @@
+[package]
+name = "ovp-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core Dependencies
+anyhow = "1.0.67"
+serde = { version = "1.0.192", features = ["derive"] }
+serde_json = "1.0.108"
+log = "0.4.19"
+env_logger = "0.11.5"
+hex = "0.4.3"
+sha2 = "0.10.8"
+base64 = "0.22.1"
+toml = "0.8.19"
+thiserror = "2.0.3"
+chrono = { version = "0.4.38", features = ["serde"] }
+uuid = { version = "1.3.4", features = ["v4", "serde"] }
+itertools = "0.13.0"
+num-derive = "0.4.2"
+num-traits = "0.2.15"
+num-bigint = { version = "0.4", features = ["rand"] }
+
+# Bitcoin-related Dependencies
+bitcoin_hashes = { version = "0.15.0", features = ["serde"] }
+bitcoin = { version = "0.32.4", features = ["rand", "serde"] }
+bitcoincore-rpc = "0.19.0"
+bip39 = "2.1.0"
+bitcoin_hd = "0.10.2"
+bip32 = "0.5.2"
+base58check = { version = "0.1.0", default-features = false }
+bech32 = { version = "0.11.0", features = ["std"] }
+bitcoin-internals = { version = "0.4.0", features = ["std"] }
+bitcoin-io = { version = "0.2.0", features = ["std"] }
+bitcoin-units = { version = "0.2.0", features = ["std"] }
+hex-conservative = { version = "0.3.0", features = ["std"] }
+hex_lit = "0.1.1"
+secp256k1 = { version = "0.30.0", features = ["std", "serde"] }
+
+# WASM and Browser Dependencies
+wasm-bindgen = "0.2.83"
+wasm-bindgen-futures = "0.4.33"
+js-sys = "0.3.60"
+web-sys = { version = "0.3.72", features = ["Window", "Storage", "Performance", "console", "WebSocket", "MessageEvent", "Url", "Blob"] }
+console_error_panic_hook = "0.1.7"
+wasm-bindgen-test = "0.3.0"
+getrandom = { version = "0.2", features = ["js"] }
+wasmcov = "0.2"
+
+# Crypto Dependencies
+aes-gcm = "0.10.3"
+ed25519-dalek = { version = "2.1.0", features = ["hazmat", "rand_core", "serde"] }
+x25519-dalek = "2.0.0"
+curve25519-dalek = "4.1.2"
+rand = { version = "0.8", features = ["getrandom"] }
+blst = { version = "0.3.5", features = ["portable"] }
+ark-ff = "0.5.0"
+ark-ec = "0.5.0"
+ark-serialize = "0.5.0"
+subtle = "2.5.0"
+blake2 = "0.10.6"
+jsonwebtoken = "9.3.0"
+
+# Async and Network
+futures = "0.3"
+async-trait = "0.1"
+reqwest = { version = "0.12.9", features = ["json"] }
+
+# Encoding and Utils
+bincode = "1.3.3"
+serde_derive = "1.0"
+zeroize = "1.8.1"
+lazy_static = "1.4.0"
+parking_lot = "0.12.1"
+plonky2 = { git = "https://github.com/mir-protocol/plonky2", branch = "main", features = ["std"] }
+plonky2_field = { git = "https://github.com/mir-protocol/plonky2", package = "plonky2_field", branch = "main" }
+array-init = "2.0.0"
+merkle = "1.11.0"
+strum = "0.26.3"
+strum_macros = "0.26.4"
+metrics = "0.24.0"
+lru_time_cache = "0.11.11"
+crc = "3.0"
+ed25519 = "2.2"
+colored = "2.0.0"
+rayon = "1.5.3"
+termcolor = "1.0.4"
+serde_arrays = "0.1"
+serde-wasm-bindgen = "0.6.5"
+derive_more = { version = "1.0.0", features = ["full"] }
+smallvec = { version = "1.10", features = ["const_new", "union", "write"] }
+
+# Logging and Tracing
+tracing = "0.1"
+tracing-wasm = "0.2"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+
+[dev-dependencies]
+criterion = "0.5.1"
+wasm-bindgen-test = "0.3.0"
+
+[[bench]]
+name = "benchmarks"
+harness = false
+path = "benches/benchmarks.rs"
+test = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--enable-mutable-globals"]

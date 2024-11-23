@@ -1,5 +1,5 @@
 # # Overpass: Mathematical Foundations and Technical Specifications
-Brandon Ramsay  
+Cryptskii 
 October 2024
 
 ## 1. Core System Definitions
