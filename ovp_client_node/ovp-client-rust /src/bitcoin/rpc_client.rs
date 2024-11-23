@@ -18,6 +18,7 @@ pub struct BitcoinRpcClient {
 pub struct BitcoinRpcClient {
     inner: bitcoincore_rpc::Client,
     config: BitcoinRpcConfig,
+    pub(crate) rpc_client: bitcoincore_rpc::Client,
 }
 
 impl BitcoinRpcClient {
@@ -33,7 +34,7 @@ impl BitcoinRpcClient {
                 &config.url,
                 bitcoincore_rpc::Auth::UserPass(config.user.clone(), config.password.clone()),
             )?;
-            Ok(Self { inner: client, config })
+            Ok(Self { inner: client, config, rpc_client: todo!() })
         }
     }
 
