@@ -1,12 +1,13 @@
+use crate::network::client_side::NetworkError;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-use crate::common::error::client_errors::{NetworkError, Result as NetworkResult};
+use crate::common::error::client_errors::{SystemErrorType::NetworkError as OtherNetworkError, Result as NetworkResult};
 use crate::common::types::state_boc::StateInit;
 use crate::core::client::channel::channel_contract::Transaction;
 use crate::network::traits::NetworkConnection;
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetStateInitParams {
@@ -25,7 +26,7 @@ pub struct GetTransactionParams {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetTransactionResult {
-    pub transaction: Transaction,
+    pub transaction: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -36,7 +37,7 @@ pub struct GetTransactionsParams {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetTransactionsResult {
-    pub transactions: Vec<Transaction>,
+    pub transactions: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -77,14 +78,14 @@ impl PeerApi {
         let response = self
             .client
             .post(format!("{}/state_init", self.url))
-            .json(&params)
+            .json(params)   
             .send()
             .await
-            .map_err(|e| NetworkError::RequestError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         let result: GetStateInitResult = response
             .json()
             .await
-            .map_err(|e| NetworkError::DeserializationError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         Ok(result.state_init)
     }
 
@@ -93,14 +94,14 @@ impl PeerApi {
         let response = self
             .client
             .post(format!("{}/transaction", self.url))
-            .json(&params)
+            .json(¶ms)
             .send()
             .await
-            .map_err(|e| NetworkError::RequestError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         let result: GetTransactionResult = response
             .json()
             .await
-            .map_err(|e| NetworkError::DeserializationError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         Ok(result.transaction)
     }
 
@@ -113,14 +114,14 @@ impl PeerApi {
         let response = self
             .client
             .post(format!("{}/transactions", self.url))
-            .json(&params)
+            .json(¶ms)
             .send()
             .await
-            .map_err(|e| NetworkError::RequestError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         let result: GetTransactionsResult = response
             .json()
             .await
-            .map_err(|e| NetworkError::DeserializationError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         Ok(result.transactions)
     }
 
@@ -129,14 +130,14 @@ impl PeerApi {
         let response = self
             .client
             .post(format!("{}/balance", self.url))
-            .json(&params)
+            .json(¶ms)
             .send()
             .await
-            .map_err(|e| NetworkError::RequestError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         let result: GetBalanceResult = response
             .json()
             .await
-            .map_err(|e| NetworkError::DeserializationError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         Ok(result.balance)
     }
 
@@ -145,18 +146,17 @@ impl PeerApi {
         let response = self
             .client
             .post(format!("{}/channel", self.url))
-            .json(&params)
+            .json(¶ms)
             .send()
             .await
-            .map_err(|e| NetworkError::RequestError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         let result: GetChannelResult = response
             .json()
             .await
-            .map_err(|e| NetworkError::DeserializationError(e.to_string()))?;
+            .map_err(|e| NetworkError::Other(e.to_string()))?;
         Ok(result.channel)
     }
 }
-
 pub struct Peer {
     api: PeerApi,
     url: String,

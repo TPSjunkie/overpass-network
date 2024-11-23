@@ -1,23 +1,22 @@
-use async_trait::async_trait;
 use crate::core::client::channel::channel_contract::Transaction;
 use crate::network::traits::NetworkConnection;
-use crate::network::api::Api;
 use crate::common::error::client_errors::Result as NetworkResult;
 use crate::common::types::state_boc::StateInit;
+
+use super::api::NetworkApi;
 
 pub struct BitcoinCS {
     url: String,
     port: u16,
     username: String,
     password: String,
-    api: Api,
+    api: NetworkApi,
 }
 
 impl BitcoinCS {
     pub fn new(url: String, port: u16, username: String, password: String) -> Self {
-        let api = Api::new(
+        let api = NetworkApi::new(
             format!("{}:{}", url.clone(), port),
-            String::new(), // Empty SSN URL as not needed for Bitcoin CS
         );
 
         Self {
@@ -32,24 +31,29 @@ impl BitcoinCS {
 
 #[async_trait]
 impl NetworkConnection for BitcoinCS {
-    async fn get_state_init(&self, address: String) -> NetworkResult<StateInit> {
-        self.api.get_state_init(address).await
+    async fn get_state_init(&self, _address: String) -> NetworkResult<StateInit> {
+        // Implement the method or delegate to a proper implementation
+        unimplemented!()
     }
 
-    async fn get_transaction(&self, transaction_id: String) -> NetworkResult<Transaction> {
-        self.api.get_transaction(transaction_id).await
+    async fn get_transaction(&self, _transaction_id: String) -> NetworkResult<Transaction> {
+        // Implement the method or delegate to a proper implementation
+        unimplemented!()
     }
 
-    async fn get_transactions(&self, address: String, limit: Option<u32>) -> NetworkResult<Vec<Transaction>> {
-        self.api.get_transactions(address, limit).await
+    async fn get_transactions(&self, _address: String, _limit: Option<u32>) -> NetworkResult<Vec<Transaction>> {
+        // Implement the method or delegate to a proper implementation
+        unimplemented!()
     }
 
-    async fn get_balance(&self, address: String) -> NetworkResult<u64> {
-        self.api.get_balance(address).await
+    async fn get_balance(&self, _address: String) -> NetworkResult<u64> {
+        // Implement the method or delegate to a proper implementation
+        unimplemented!()
     }
 
     async fn get_blockchain_info(&self) -> NetworkResult<serde_json::Value> {
-        self.api.get_blockchain_info().await
+        // Implement the method or delegate to a proper implementation
+        unimplemented!()
     }
     
     fn get_server_address(&self) -> String {
@@ -61,7 +65,7 @@ impl NetworkConnection for BitcoinCS {
 mod tests {
     use super::*;
     
-    #[tokio::test]
+    #[cfg_attr(test, tokio::test)]
     async fn test_bitcoin_cs_connection() {
         let cs = BitcoinCS::new(
             "localhost".to_string(),
