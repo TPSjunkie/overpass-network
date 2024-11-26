@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <meta name="theme-color" content="#8b956d" />
+    <meta name="tonconnect-manifest" href=" https://overpass.network/tonconnect-manifest.json" />
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <meta http-equiv="Cross-Origin-Resource-Policy" content="cross-origin" />
+    
+    <!-- Updated CSP -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+
+      script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' chrome-extension: blob:;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com;
+      connect-src 'self' https://cdn.tailwindcss.com https://connect.tonhubapi.com https://ton.access.orbs.network https://toncenter.com ws://localhost:* wss://localhost:* blob:;
+      worker-src 'self' blob: 'wasm-unsafe-eval';
+      child-src 'self' blob: chrome-extension:;
+      frame-src 'self' chrome-extension:;
+      media-src 'self' data: blob:;
+      img-src 'self' data: blob:
+    ">
+    
+    <title>Overpass Channels</title>
+
+    <link rel="icon" type="image/png" href="/logo.png" />
+  
+
+  </head>
+  <body class="bg-military-brown font-vt323 w-full h-screen m-0 p-0">
+    <div id="root" class="w-full h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
