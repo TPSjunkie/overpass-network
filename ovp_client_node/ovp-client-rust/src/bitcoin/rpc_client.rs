@@ -1,3 +1,5 @@
+// ./bitcoin/rpc_client.rs
+
 use bitcoincore_rpc::RpcApi;
 use std::fmt;
 use thiserror::Error;
