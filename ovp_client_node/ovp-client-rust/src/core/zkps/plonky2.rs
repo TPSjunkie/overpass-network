@@ -32,10 +32,6 @@
 
 // .//src/core/zkps/plonky2.rs
 
-
-
-use crate::core::zkps::circuit_builder::VirtualCell;
-use crate::core::zkps::circuit_builder::ZkCircuitBuilder;
 use plonky2::{
     field::extension::Extendable,
     hash::hash_types::RichField,
@@ -98,7 +94,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> C
     }
 
     pub fn build(&mut self) -> Result<(), CircuitError> {
-        let data = self.builder.build::<C>();
+        let data = std::mem::replace(&mut self.builder, CircuitBuilder::new(CircuitConfig::default())).build::<C>();
         self.data = Some(data);
         Ok(())
     }
