@@ -10,4 +10,5 @@ pub mod user;
 pub mod wallet_extension_contract;
 pub mod wallet_extension_types;
 pub mod wallet_utils;
+pub mod wallet_manager;
 //pub mod zkp_transaction;
