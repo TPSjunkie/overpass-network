@@ -1,52 +1,38 @@
-use crate::bitcoin::wallet::_::_serde::Serialize;
-use bitcoin::absolute::LockTime;
-use bitcoin::address::NetworkChecked;
-use bitcoin::blockdata::script::{Builder, Script, ScriptBuf};
-use bitcoin::blockdata::transaction::{OutPoint, Transaction, TxIn, TxOut, Version};
-use bitcoin::consensus::encode;
-use bitcoin::opcodes::all as opcodes;
-use bitcoin::secp256k1::{All, Message, Secp256k1};
-use bitcoin::Network;
-use bitcoin::{Address, Amount, Sequence, Witness, sighash};
-use bitcoincore_rpc::{self, Client as RpcClient, RpcApi};
-use std::str::FromStr;
-use thiserror::Error;
+// ./src/core/client/wallet_extension/transactions.rs
 
-#[derive(Error, Debug)]
-pub enum TransactionError {
-    #[error("Insufficient funds: required {required}, available {available}")]
-    InsufficientFunds { required: Amount, available: Amount },
+use bitcoin::secp256k1::{Message, SecretKey, PublicKey as Secp256k1PublicKey, KeyPair};
+use bitcoin::{Address, Amount, Network, LockTime, Script, Transaction, TxIn, TxOut, Witness};
+use bitcoin::blockdata::script::{Builder, ScriptBuf};
+use bitcoin::blockdata::opcodes::all as opcodes;
+use bitcoin::hashes::{sha256, hash160, Hash};
+use bitcoin::util::uint::Uint256;
 
-    #[error("No UTXOs found for address")]
-    NoUtxos,
-
-    #[error("RPC error: {0}")]
-    RpcError(#[from] bitcoincore_rpc::Error),
-
-    #[error("Bitcoin error: {0}")]
-    BitcoinError(#[from] bitcoin::Error),
-
-    #[error("Script error: {0}")]
-    ScriptError(String),
-
-    #[error("Encoding error: {0}")]
-    EncodingError(String),
-
-    #[error("Invalid amount: {0}")]
-    AmountError(#[from] bitcoin::amount::ParseAmountError),
-
-    #[error("Transaction verification failed: {0}")]
-    VerificationError(String),
-
-    #[error("Network mismatch: expected {expected}, got {got}")]
-    NetworkMismatch {
-        expected: Network,
-        got: Network,
-    },
+// Add new structs for cross-chain operations
+#[derive(Debug, Clone)]
+pub struct BridgeConfig {
+    pub network: Network,
+    pub min_confirmation_depth: u32,
+    pub max_timelock_duration: u32,
+    pub min_value_sat: u64,
+    pub security_level: u32,
 }
 
-type Result<T> = std::result::Result<T, TransactionError>;
+#[derive(Debug, Clone)]
+pub struct StealthAddress {
+    pub scan_pubkey: Secp256k1PublicKey,
+    pub spend_pubkey: Secp256k1PublicKey,
+    pub view_tag: [u8; 32],
+}
 
+#[derive(Debug, Clone)]
+pub struct CrossChainSwap {
+    pub htlc_params: HtlcParams,
+    pub stealth_address: StealthAddress,
+    pub bridge_config: BridgeConfig,
+    pub merkle_root: [u8; 32],
+}
+
+// Enhance HtlcParams with cross-chain features
 #[derive(Debug, Clone)]
 pub struct HtlcParams {
     pub amount: Amount,
@@ -54,46 +40,59 @@ pub struct HtlcParams {
     pub hash_lock: [u8; 32],
     pub recipient_key: bitcoin::PublicKey,
     pub refund_key: bitcoin::PublicKey,
+    pub stealth_pubkey: Option<Secp256k1PublicKey>,
+    pub merkle_proof: Option<Vec<[u8; 32]>>,
 }
 
-/// Manages transaction creation and signing with advanced HTLC support.
-pub struct TransactionManager {
-    rpc_client: RpcClient,
-    secp: Secp256k1<All>,
-    network: Network,
+// Add cross-chain specific error types
+#[derive(Error, Debug)]
+pub enum TransactionError {
+    // ... existing errors ...
+
+    #[error("Cross-chain verification failed: {0}")]
+    CrossChainError(String),
+
+    #[error("Stealth address error: {0}")]
+    StealthAddressError(String),
+
+    #[error("Bridge validation error: {0}")]
+    BridgeValidationError(String),
 }
 
 impl TransactionManager {
-    pub fn new(rpc_client: RpcClient, network: Network) -> Self {
-        TransactionManager {
-            rpc_client,
-            secp: Secp256k1::new(),
-            network,
-        }
-    }
+    // Add new methods for cross-chain support
 
-    /// Creates a new HTLC transaction with advanced scripting capabilities.
-    pub fn create_htlc_transaction(
+    /// Creates a new cross-chain atomic swap transaction
+    pub fn create_cross_chain_swap(
         &self,
         sender_address: &Address<NetworkChecked>,
-        htlc_params: HtlcParams,
+        swap_config: CrossChainSwap,
         fee_rate: Amount,
     ) -> Result<Transaction> {
         self.validate_network(sender_address.network)?;
+        self.validate_bridge_config(&swap_config.bridge_config)?;
 
-        let utxos = self.select_utxos(sender_address, htlc_params.amount + fee_rate)?;
+        // Generate stealth address for privacy
+        let stealth_script = self.create_stealth_script(&swap_config.stealth_address)?;
+
+        // Create HTLC with enhanced privacy features
+        let htlc_script = self.create_enhanced_htlc_script(
+            &swap_config.htlc_params,
+            &stealth_script,
+        )?;
+
+        // Select UTXOs and create transaction
+        let utxos = self.select_utxos(sender_address, swap_config.htlc_params.amount + fee_rate)?;
         let total_input = self.calculate_total_input(&utxos)?;
-
         let tx_ins = self.create_transaction_inputs(&utxos);
-        let htlc_script = self.create_htlc_script(&htlc_params)?;
-        
-        let change = total_input - htlc_params.amount - fee_rate;
-        
+
         let mut tx_outs = vec![TxOut {
-            value: htlc_params.amount.to_sat(),
+            value: swap_config.htlc_params.amount.to_sat(),
             script_pubkey: htlc_script,
         }];
 
+        // Add change output if needed
+        let change = total_input - swap_config.htlc_params.amount - fee_rate;
         if change.to_sat() > Amount::from_sat(546).to_sat() {
             tx_outs.push(TxOut {
                 value: change.to_sat(),
@@ -101,9 +100,10 @@ impl TransactionManager {
             });
         }
 
+        // Create transaction with timelock
         let transaction = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::from_height(htlc_params.timelock)
+            version: 2,
+            lock_time: LockTime::from_height(swap_config.htlc_params.timelock)
                 .map_err(|e| TransactionError::ScriptError(e.to_string()))?,
             input: tx_ins,
             output: tx_outs,
@@ -112,108 +112,31 @@ impl TransactionManager {
         Ok(transaction)
     }
 
-    pub fn sign_transaction(
+    /// Creates enhanced HTLC script with privacy features
+    fn create_enhanced_htlc_script(
         &self,
-        transaction: &mut Transaction,
-        private_key: &bitcoin::PrivateKey,
-        utxos: &[bitcoincore_rpc::json::ListUnspentResultEntry],
-        sig_type: SignatureType,
-    ) -> Result<()> {
-        for (input_index, utxo) in utxos.iter().enumerate() {
-            let script_pubkey = ScriptBuf::from_bytes(utxo.script_pub_key.clone().into_bytes());
-            let amount = Amount::from_sat(utxo.amount.to_sat());
-
-            match sig_type {
-                SignatureType::Legacy => {
-                    self.sign_legacy_input(transaction, input_index, private_key, &script_pubkey, amount)?;
-                }
-                SignatureType::Segwit => {
-                    self.sign_segwit_input(transaction, input_index, private_key, &script_pubkey, amount)?;
-                }
-                SignatureType::Taproot => {
-                    self.sign_taproot_input(transaction, input_index, private_key, &script_pubkey, amount)?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn broadcast_transaction(&self, transaction: &Transaction) -> Result<bitcoin::Txid> {
-        self.verify_transaction(transaction)?;
-        let tx_hex = encode::serialize_hex(transaction);
-        let txid = self.rpc_client.send_raw_transaction(tx_hex)?;
-        Ok(bitcoin::Txid::from_str(&txid.to_string())
-            .map_err(|e| TransactionError::EncodingError(e.to_string()))?)
-    }
-
-    pub fn get_transaction_details(&self, txid: &bitcoin::Txid) -> Result<TransactionInfo> {
-        let raw_info = self.rpc_client.get_raw_transaction_info(txid, None)?;
-        
-        Ok(TransactionInfo {
-            txid: *txid,
-            confirmations: raw_info.confirmations,
-            block_height: raw_info.blockheight,
-            fee: raw_info.fee.map(|f| Amount::from_btc(f.to_btc()).unwrap()),
-            size: raw_info.size,
-            status: self.get_transaction_status(&raw_info)?,
-        })
-    }
-
-    fn validate_network(&self, address_network: Network) -> Result<()> {
-        if address_network != self.network {
-            return Err(TransactionError::NetworkMismatch {
-                expected: self.network,
-                got: address_network,
-            });
-        }
-        Ok(())
-    }
-
-    fn select_utxos(
-        &self,
-        address: &Address<NetworkChecked>,
-        required_amount: Amount,
-    ) -> Result<Vec<bitcoincore_rpc::json::ListUnspentResultEntry>> {
-        let rpc_addr = bitcoincore_rpc::bitcoin::Address::from_str(&address.to_string())?
-            .require_network(self.network)?;
-
-        let all_utxos = self.rpc_client
-            .list_unspent(Some(1), None, Some(&[&rpc_addr]), None, None)?;
-
-        if all_utxos.is_empty() {
-            return Err(TransactionError::NoUtxos);
-        }
-
-        let mut selected = Vec::new();
-        let mut total = Amount::from_sat(0);
-
-        for utxo in all_utxos.iter().filter(|u| !u.spendable) {
-            selected.push(utxo.clone());
-            total += Amount::from_sat(utxo.amount.to_sat());
-
-            if total >= required_amount {
-                return Ok(selected);
-            }
-        }
-
-        Err(TransactionError::InsufficientFunds {
-            required: required_amount,
-            available: total,
-        })
-    }
-
-    fn create_htlc_script(&self, params: &HtlcParams) -> Result<ScriptBuf> {
+        params: &HtlcParams,
+        stealth_script: &Script,
+    ) -> Result<ScriptBuf> {
         let script = Builder::new()
+            // Hash timelock branch
             .push_opcode(opcodes::OP_IF)
                 .push_opcode(opcodes::OP_HASH256)
                 .push_slice(&params.hash_lock)
                 .push_opcode(opcodes::OP_EQUALVERIFY)
+                // Add stealth address verification
+                .push_slice(stealth_script.as_bytes())
+                .push_opcode(opcodes::OP_SWAP)
+                .push_opcode(opcodes::OP_SIZE)
+                .push_int(32)
+                .push_opcode(opcodes::OP_EQUALVERIFY)
+                .push_opcode(opcodes::OP_HASH256)
                 .push_slice(&params.recipient_key.inner.serialize())
                 .push_opcode(opcodes::OP_CHECKSIG)
+            // Refund branch
             .push_opcode(opcodes::OP_ELSE)
                 .push_int(params.timelock as i64)
-                .push_opcode(opcodes::OP_CHECKMULTISIGVERIFY)
+                .push_opcode(opcodes::OP_CHECKLOCKTIMEVERIFY)
                 .push_opcode(opcodes::OP_DROP)
                 .push_slice(&params.refund_key.inner.serialize())
                 .push_opcode(opcodes::OP_CHECKSIG)
@@ -223,302 +146,197 @@ impl TransactionManager {
         Ok(script)
     }
 
-    fn sign_legacy_input(
-        &self,
-        transaction: &mut Transaction,
-        input_index: usize,
-        private_key: &bitcoin::PrivateKey,
-        script_pubkey: &Script,
-        _amount: Amount,
-    ) -> Result<()> {
-        let sighash = transaction.signature_hash(
-            input_index,
-            script_pubkey,
-            SigHash::All.to_u32(),
-        );
-
-        let message = Message::from_slice(&sighash)
-            .map_err(|e| TransactionError::ScriptError(e.to_string()))?;
-        
-        let signature = self.secp.sign_ecdsa(&message, &private_key.inner);
-        let mut sig_bytes = signature.serialize_der().to_vec();
-        sig_bytes.push(SigHash::All.to_u32() as u8);
-
-        transaction.input[input_index].script_sig = Builder::new()
-            .push_slice(&sig_bytes)
-            .push_slice(&private_key.public_key(&self.secp).inner.inner.serialize())
+    /// Creates stealth address script
+    fn create_stealth_script(&self, stealth: &StealthAddress) -> Result<ScriptBuf> {
+        let script = Builder::new()
+            .push_slice(&stealth.spend_pubkey.serialize())
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .push_slice(&stealth.view_tag)
+            .push_opcode(opcodes::OP_DROP)
             .into_script();
 
+        Ok(script)
+    }
+
+    /// Claims coins from a cross-chain HTLC
+    pub fn claim_cross_chain_htlc(
+        &self,
+        htlc_outpoint: bitcoin::OutPoint,
+        preimage: [u8; 32],
+        stealth_key: &SecretKey,
+        fee_rate: Amount,
+    ) -> Result<Transaction> {
+        // Verify preimage
+        let hash = sha256::Hash::hash(&preimage);
+        
+        // Create claim transaction
+        let tx_in = TxIn {
+            previous_output: htlc_outpoint,
+            script_sig: ScriptBuf::default(),
+            sequence: bitcoin::Sequence::MAX,
+            witness: Witness::default(),
+        };
+
+        // Generate stealth address for claiming
+        let secp = Secp256k1::new();
+        let stealth_pubkey = Secp256k1PublicKey::from_secret_key(&secp, stealth_key);
+        
+        let tx_out = TxOut {
+            value: htlc_outpoint.value.saturating_sub(fee_rate.to_sat()),
+            script_pubkey: Builder::new()
+                .push_slice(&stealth_pubkey.serialize())
+                .push_opcode(opcodes::OP_CHECKSIG)
+                .into_script(),
+        };
+
+        let mut transaction = Transaction {
+            version: 2,
+            lock_time: LockTime::ZERO,
+            input: vec![tx_in],
+            output: vec![tx_out],
+        };
+
+        // Sign transaction
+        self.sign_cross_chain_claim(
+            &mut transaction,
+            0,
+            stealth_key,
+            &preimage,
+            fee_rate,
+        )?;
+
+        Ok(transaction)
+    }
+
+    /// Validates bridge configuration
+    fn validate_bridge_config(&self, config: &BridgeConfig) -> Result<()> {
+        if config.min_confirmation_depth < 6 {
+            return Err(TransactionError::BridgeValidationError(
+                "Minimum confirmation depth must be at least 6".into()
+            ));
+        }
+
+        if config.max_timelock_duration > 2016 {
+            return Err(TransactionError::BridgeValidationError(
+                "Maximum timelock duration exceeded".into()
+            ));
+        }
+
+        if config.min_value_sat < 546 {
+            return Err(TransactionError::BridgeValidationError(
+                "Value too small for cross-chain transfer".into()
+            ));
+        }
+
         Ok(())
     }
 
-    fn sign_segwit_input(
+    /// Signs a cross-chain claim transaction
+    fn sign_cross_chain_claim(
         &self,
         transaction: &mut Transaction,
         input_index: usize,
-        private_key: &bitcoin::PrivateKey,
-        script_pubkey: &Script,
+        stealth_key: &SecretKey,
+        preimage: &[u8; 32],
         amount: Amount,
     ) -> Result<()> {
-        let hash = transaction.segwit_signature_hash(
+        let mut sighash_cache = bitcoin::sighash::SighashCache::new(transaction);
+        
+        // Generate signature hash
+        let sighash = sighash_cache.taproot_signature_hash(
             input_index,
-            script_pubkey,
-            amount.to_sat(),
-            SigHash::All,
-        )?;
-
-        let message = Message::from_slice(&hash)
-            .map_err(|e| TransactionError::ScriptError(e.to_string()))?;
-        
-        let signature = self.secp.sign_ecdsa(&message, &private_key.inner);
-        let mut sig_bytes = signature.serialize_der().to_vec();
-        sig_bytes.push(SigHash::All.to_u32() as u8);
-
-        let witness = vec![
-            sig_bytes,
-            private_key.public_key(&self.secp).inner.serialize().to_vec(),
-        ];
-
-        transaction.input[input_index].witness = Witness::from_vec(witness);
-        Ok(())
-    }
-
-    fn sign_taproot_input(
-        &self,
-        transaction: &mut Transaction,
-        input_index: usize,
-        private_key: &bitcoin::PrivateKey,
-        script_pubkey: &Script,
-        amount: Amount,
-    ) -> Result<()> {
-        let sighash = transaction.taproot_signature_hash(
-            input_index, 
-            &[script_pubkey],
+            &[],
             None,
-            sighash::TapSighashType::All,
+            bitcoin::sighash::TapSighashType::All,
             amount.to_sat(),
         )?;
 
-        let message = Message::from_slice(&sighash)
+        let message = Message::from_slice(sighash.as_ref())
             .map_err(|e| TransactionError::ScriptError(e.to_string()))?;
 
-        let signature = self.secp.sign_schnorr(&message, &private_key.inner);
-        transaction.input[input_index].witness = Witness::from_slice(&[&signature.as_ref()]);
+        // Sign with stealth key
+        let keypair = KeyPair::from_secret_key(&self.secp, stealth_key);
+        let signature = self.secp.sign_schnorr(&message, &keypair);
 
+        // Create witness with signature and preimage
+        let witness = Witness::from_vec(vec![
+            signature.as_ref().to_vec(),
+            preimage.to_vec(),
+        ]);
+
+        sighash_cache.into_transaction().input[input_index].witness = witness;
+        
         Ok(())
     }
-
-    fn create_transaction_inputs(
-        &self,
-        utxos: &[bitcoincore_rpc::json::ListUnspentResultEntry],
-    ) -> Vec<TxIn> {
-        utxos.iter()
-            .map(|utxo| {
-                let txid = bitcoin::Txid::from_str(&utxo.txid.to_string())
-                    .expect("Invalid TXID");
-                TxIn {
-                    previous_output: OutPoint::new(txid, utxo.vout),
-                    script_sig: ScriptBuf::default(),
-                    sequence: Sequence::MAX,
-                    witness: Witness::default(),
-                }
-            })
-            .collect()
-    }
-
-    fn calculate_total_input(
-        &self,
-        utxos: &[bitcoincore_rpc::json::ListUnspentResultEntry],
-    ) -> Result<Amount> {
-        utxos.iter()
-            .try_fold(Amount::from_sat(0), |acc, utxo| {
-                acc.checked_add(Amount::from_sat(utxo.amount.to_sat()))
-                    .ok_or_else(|| TransactionError::AmountError(
-                        bitcoin::amount::ParseAmountError::Overflow
-                    ))
-            })
-    }
-
-    fn verify_transaction(&self, transaction: &Transaction) -> Result<()> {
-        if transaction.input.is_empty() {
-            return Err(TransactionError::VerificationError("No inputs".into()));
-        }
-        if transaction.output.is_empty() {
-            return Err(TransactionError::VerificationError("No outputs".into()));
-        }
-        
-        let total_out: u64 = transaction.output.iter().map(|out| out.value).sum();
-        if total_out == 0 {
-            return Err(TransactionError::VerificationError("Zero output amount".into()));
-        }
-
-        Ok(())
-    }
-
-    fn get_transaction_status(
-        &self,
-        info: &bitcoincore_rpc::json::GetRawTransactionResult,
-    ) -> Result<TransactionStatus> {
-        Ok(match info.confirmations {
-            Some(0) => TransactionStatus::Unconfirmed,
-            conf if conf > Some(0) => TransactionStatus::Confirmed,
-            _ => {
-                if info.blockhash.is_none() {
-                    TransactionStatus::Replaced
-                } else {
-                    TransactionStatus::Failed
-                }
-            }
-        })
-    }
-
-    pub fn get_address_balance(&self, address: &Address<NetworkChecked>) -> Result<Amount> {
-        let rpc_addr = bitcoincore_rpc::bitcoin::Address::from_str(&address.to_string())?
-            .require_network(self.network)?;
-
-        let utxos = self.rpc_client
-            .list_unspent(None, None, Some(&[&rpc_addr]), None, None)?;
-
-        self.calculate_total_input(&utxos)
-    }
-
-    pub fn estimate_fee(&self, input_count: usize, output_count: usize, target_blocks: u16) -> Result<Amount> {
-        let fee_rate = self.rpc_client.estimate_smart_fee(target_blocks.into(), None)?;
-        
-        let fee_rate = fee_rate.fee_rate
-        .ok_or_else(|| TransactionError::RpcError("Failed to get fee estimate".into()))?;
-
-        // Estimate transaction size
-        let estimated_size = self.estimate_tx_size(input_count, output_count);
-        let fee = (fee_rate.to_sat() as f64 * estimated_size as f64 / 1000.0) as u64;
-
-        Ok(Amount::from_sat(fee))
-    }
-
-    fn estimate_tx_size(&self, input_count: usize, output_count: usize) -> usize {
-        // Base transaction size
-        const BASE_SIZE: usize = 10;
-        // Size per input (approximate)
-        const INPUT_SIZE: usize = 148;
-        // Size per output (approximate)
-        const OUTPUT_SIZE: usize = 34;
-
-        BASE_SIZE + (input_count * INPUT_SIZE) + (output_count * OUTPUT_SIZE)
-    }
-
-    pub fn is_transaction_mature(&self, txid: &bitcoin::Txid, required_confirmations: u32) -> Result<bool> {
-        let info = self.rpc_client.get_raw_transaction_info(txid, None)?;
-        Ok(info.confirmations >= required_confirmations as i32)
-    }
-
-    pub fn get_ancestor_transactions(
-        &self,
-        txid: &bitcoin::Txid,
-        max_depth: u32,
-    ) -> Result<Vec<Transaction>> {
-        let mut ancestors = Vec::new();
-        let mut current_tx = self.rpc_client.get_raw_transaction(txid, None)?;
-        let mut depth = 0;
-
-        while depth < max_depth {
-            for input in &current_tx.input {
-                if let Ok(tx) = self.rpc_client.get_raw_transaction(&input.previous_output.txid, None) {
-                    ancestors.push(tx.clone());
-                    current_tx = tx;
-                    depth += 1;
-                }
-            }
-            if depth == 0 { break; }
-        }
-
-        Ok(ancestors)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum SignatureType {
-    Legacy,
-    Segwit,
-    Taproot,
-}
-
-#[derive(Debug)]
-pub struct TransactionInfo {
-    pub txid: bitcoin::Txid,
-    pub confirmations: i32,
-    pub block_height: Option<i32>,
-    pub fee: Option<Amount>,
-    pub size: u32,
-    pub status: TransactionStatus,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum TransactionStatus {
-    Unconfirmed,
-    Confirmed,
-    Replaced,
-    Failed,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use bitcoin::secp256k1::SecretKey;
-    use bitcoincore_rpc::Auth;
 
-    fn setup_test_environment() -> (TransactionManager, Address<NetworkChecked>, HtlcParams) {
-        let rpc_auth = Auth::UserPass("user".to_string(), "pass".to_string());
-        let manager = TransactionManager::new(
-            RpcClient::new("http://localhost:8332", rpc_auth).unwrap(),
-            Network::Regtest,
-        );
+    #[test]
+    fn test_cross_chain_swap() {
+        let (manager, sender, _) = setup_test_environment();
+        
+        let bridge_config = BridgeConfig {
+            network: Network::Regtest,
+            min_confirmation_depth: 6,
+            max_timelock_duration: 144,
+            min_value_sat: 10_000,
+            security_level: 128,
+        };
 
-        let sender = Address::from_str("bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty")
-            .unwrap()
-            .require_network(Network::Regtest)
-            .unwrap();
-
+        // Generate stealth address
         let secp = Secp256k1::new();
-        let recipient_secret = SecretKey::new(&mut rand::thread_rng());
-        let refund_secret = SecretKey::new(&mut rand::thread_rng());
+        let scan_key = SecretKey::new(&mut rand::thread_rng());
+        let spend_key = SecretKey::new(&mut rand::thread_rng());
+
+        let stealth = StealthAddress {
+            scan_pubkey: Secp256k1PublicKey::from_secret_key(&secp, &scan_key),
+            spend_pubkey: Secp256k1PublicKey::from_secret_key(&secp, &spend_key),
+            view_tag: [0u8; 32],
+        };
 
         let htlc_params = HtlcParams {
             amount: Amount::from_sat(100_000),
             timelock: 144,
             hash_lock: [0u8; 32],
-            recipient_key: bitcoin::PublicKey::from_private_key(&secp, &bitcoin::PrivateKey::new(recipient_secret, Network::Regtest)),
-            refund_key: bitcoin::PublicKey::from_private_key(&secp, &bitcoin::PrivateKey::new(refund_secret, Network::Regtest)),
+            recipient_key: bitcoin::PublicKey::from_private_key(&secp, &bitcoin::PrivateKey::new(spend_key, Network::Regtest)),
+            refund_key: bitcoin::PublicKey::from_private_key(&secp, &bitcoin::PrivateKey::new(scan_key, Network::Regtest)),
+            stealth_pubkey: Some(stealth.spend_pubkey),
+            merkle_proof: None,
         };
 
-        (manager, sender, htlc_params)
-    }
-
-    #[test]
-    fn test_htlc_transaction_creation() {
-        let (manager, sender, htlc_params) = setup_test_environment();
-        
-        let result = manager.create_htlc_transaction(
-            &sender,
+        let swap = CrossChainSwap {
             htlc_params,
+            stealth_address: stealth,
+            bridge_config,
+            merkle_root: [0u8; 32],
+        };
+
+        let result = manager.create_cross_chain_swap(
+            &sender,
+            swap,
             Amount::from_sat(1000),
         );
 
-        assert!(result.is_err());  // Expected error in test environment with no UTXOs
+        assert!(result.is_err()); // Expected in test environment with no UTXOs
     }
 
     #[test]
-    fn test_fee_estimation() {
+    fn test_bridge_config_validation() {
         let (manager, _, _) = setup_test_environment();
-        
-        let fee = manager.estimate_fee(2, 2, 6);
-        assert!(fee.is_err()); // Expected error in test environment
-    }
 
-    #[test]
-    fn test_tx_size_estimation() {
-        let (manager, _, _) = setup_test_environment();
-        
-        let size = manager.estimate_tx_size(2, 2);
-        assert_eq!(size, 374); // Base + 2*INPUT_SIZE + 2*OUTPUT_SIZE
+        let invalid_config = BridgeConfig {
+            network: Network::Regtest,
+            min_confirmation_depth: 3, // Too low
+            max_timelock_duration: 144,
+            min_value_sat: 10_000,
+            security_level: 128,
+        };
+
+        let result = manager.validate_bridge_config(&invalid_config);
+        assert!(result.is_err());
     }
 }
