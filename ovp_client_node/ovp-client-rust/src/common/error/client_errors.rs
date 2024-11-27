@@ -17,24 +17,63 @@ pub enum ChannelErrorType {
     InvalidProof,
 }
 
-impl std::fmt::Display for ChannelErrorType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ChannelErrorType::*;
+impl fmt::Display for ChannelErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InvalidTransaction => write!(f, "Invalid transaction"),
-            InvalidNonce => write!(f, "Invalid nonce"),
-            InvalidSequence => write!(f, "Invalid sequence"),
-            InvalidAmount => write!(f, "Invalid amount"),
-            InsufficientBalance => write!(f, "Insufficient balance"),
-            SpendingLimitExceeded => write!(f, "Spending limit exceeded"),
-            NoRootCell => write!(f, "No root cell"),
-            InvalidOperation => write!(f, "Invalid operation"),
-            InvalidArgument => write!(f, "Invalid argument"),
-            NotFound => write!(f, "Not found"),
-            InvalidProof => write!(f, "Invalid proof"),
+            ChannelErrorType::InvalidTransaction => write!(f, "Invalid transaction"),
+            ChannelErrorType::InvalidNonce => write!(f, "Invalid nonce"),
+            ChannelErrorType::InvalidSequence => write!(f, "Invalid sequence"),
+            ChannelErrorType::InvalidAmount => write!(f, "Invalid amount"),
+            ChannelErrorType::InsufficientBalance => write!(f, "Insufficient balance"),
+            ChannelErrorType::SpendingLimitExceeded => write!(f, "Spending limit exceeded"),
+            ChannelErrorType::NoRootCell => write!(f, "No root cell"),
+            ChannelErrorType::InvalidOperation => write!(f, "Invalid operation"),
+            ChannelErrorType::InvalidArgument => write!(f, "Invalid argument"),
+            ChannelErrorType::NotFound => write!(f, "Not found"),
+            ChannelErrorType::InvalidProof => write!(f, "Invalid proof"),
         }
     }
 }
+impl From<io::Error> for ChannelError {
+    fn from(err: io::Error) -> Self {
+        ChannelError::new(ChannelErrorType::InvalidOperation, err.to_string())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClientErrorType {
+    InvalidTransaction,
+    InvalidNonce,
+    InvalidSequence,
+    InvalidAmount,
+    InsufficientBalance,
+    SpendingLimitExceeded,
+    NoRootCell,
+    InvalidOperation,
+    InvalidArgument,
+    NotFound,
+    InvalidProof,
+}
+
+
+
+impl fmt::Display for ClientErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClientErrorType::InvalidTransaction => write!(f, "Invalid transaction"),
+            ClientErrorType::InvalidNonce => write!(f, "Invalid nonce"),
+            ClientErrorType::InvalidSequence => write!(f, "Invalid sequence"),
+            ClientErrorType::InvalidAmount => write!(f, "Invalid amount"),
+            ClientErrorType::InsufficientBalance => write!(f, "Insufficient balance"),
+            ClientErrorType::SpendingLimitExceeded => write!(f, "Spending limit exceeded"),
+            ClientErrorType::NoRootCell => write!(f, "No root cell"),
+            ClientErrorType::InvalidOperation => write!(f, "Invalid operation"),
+            ClientErrorType::InvalidArgument => write!(f, "Invalid argument"),
+            ClientErrorType::NotFound => write!(f, "Not found"),
+            ClientErrorType::InvalidProof => write!(f, "Invalid proof"),
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct ChannelError {
