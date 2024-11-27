@@ -18,6 +18,17 @@ pub mod wasm;
 
 use wasm_bindgen::prelude::*;
 
+// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
+// allocator.
+#[cfg(feature = "wee_alloc")]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;  
+// WASM-specific logging functions  
+// These functions are used to log messages from the WASM module to the browser console.
+// The `log` function is used to log messages with different levels of severity.
+// The `log` function takes a string as its argument and logs it to the console.
+// The `log` function can be used to log messages at different levels of severity.  
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
