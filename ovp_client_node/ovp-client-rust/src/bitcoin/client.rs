@@ -1,275 +1,212 @@
-// src/bitcoin/client.rs
-// Remove the unused imports
-use bitcoincore_rpc::bitcoin::{self, Address, Amount, Transaction, Txid};
-use bitcoincore_rpc::{Auth, Client as RpcClient, Error as RpcError, RpcApi};
-use log::info;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::thread::sleep;
-use std::time::Duration;
+use bitcoin::{
+    Address, Amount, Network, OutPoint, Transaction, TxIn, TxOut, Txid,
+    blockdata::script::{Script, ScriptBuf},
+    consensus::encode::serialize,
+    hashes::{sha256d, Hash},
+    secp256k1::{SecretKey, PublicKey, Secp256k1},
+};
+use bitcoincore_rpc::{Auth, Client as RpcClient, RpcApi};
+use crate::bitcoin::{
+    bitcoin_types::{HTLCParameters, StealthAddress, OpReturnMetadata, BitcoinLockState},
+    scripts::ScriptManager,
+};
+use std::{
+    collections::HashMap,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
+use tokio::sync::RwLock;
+use log::{info, warn};
 
 pub struct BitcoinClient {
-    rpc: BitcoinRpcClient,
+    rpc: RpcClient,
+    script_manager: ScriptManager,
+    network: Network,
+    state_cache: Arc<RwLock<HashMap<Txid, BitcoinLockState>>>,
 }
 
 impl BitcoinClient {
-    pub fn from_config(
-        rpc_url: &str,
-        rpc_user: &str,
-        rpc_password: &str,
-    ) -> Result<Self, RpcError> {
-        let rpc_client = BitcoinRpcClient::from_config(rpc_url, rpc_user, rpc_password)?;
-        Ok(Self { rpc: rpc_client })
-    }
-
     pub async fn new(
         url: &str,
         user: &str,
         password: &str,
+        network: Network,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let client = Self::from_config(url, user, password)?;
-        Ok(client)
+        let auth = Auth::UserPass(user.to_string(), password.to_string());
+        let rpc = RpcClient::new(url, auth)?;
+        let script_manager = ScriptManager::new(network);
+        
+        Ok(Self {
+            rpc,
+            script_manager,
+            network,
+            state_cache: Arc::new(RwLock::new(HashMap::new())),
+        })
     }
 
-    pub fn get_blockchain_info(
+    pub async fn create_htlc_transaction(
         &self,
-    ) -> Result<bitcoincore_rpc::jsonrpc::serde_json::Value, RpcError> {
-        self.rpc.rpc_client.call("getblockchaininfo", &[])
-    }
-
-    pub fn create_and_sign_transaction(
-        &self,
-        address: &str,
         amount: u64,
-    ) -> Result<Transaction, RpcError> {
-        let _recipient_address = Address::from_str(address).map_err(|e| {
-            RpcError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                e.to_string(),
-            ))
-        })?;
-        let amount = Amount::from_sat(amount);
+        recipient_pubkey: &PublicKey,
+        hash_lock: [u8; 32],
+        timeout_blocks: u32,
+        stealth_address: Option<StealthAddress>,
+    ) -> Result<Transaction, Box<dyn std::error::Error>> {
+        let htlc_params = HTLCParameters::new(
+            amount,
+            recipient_pubkey.serialize_uncompressed()[..20].try_into()?,
+            hash_lock,
+            self.rpc.get_block_count()? as u32 + timeout_blocks,
+            stealth_address,
+        );
 
-        // Create a raw transaction with HTLC
-        let mut outputs = HashMap::new();
-        let htlc_contract_address = self.rpc.rpc_client.get_new_address(None, None)?;
-
-        // Add HTLC parameters to script
-        let htlc_script = htlc_contract_address
-            .require_network(bitcoin::Network::Testnet)
-            .map_err(|e| {
-                RpcError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    e.to_string(),
-                ))
-            })?
-            .script_pubkey();
-        outputs.insert(htlc_script.to_string(), amount);
-
-        // Create a PSBT (partially signed Bitcoin transaction) with HTLC
-        let psbt = self.rpc.rpc_client.wallet_create_funded_psbt(
-            &[],        // Inputs
-            &outputs,   // Outputs with HTLC script
-            None,       // Locktime
-            None,       // Replaceable
-            Some(true), // All outputs must be confirmed
+        let script = self.script_manager.create_htlc_script(&htlc_params, recipient_pubkey)?;
+        let mut tx_builder = self.rpc.create_raw_transaction_hex(
+            &[],
+            &[(script.as_script().to_string(), Amount::from_sat(amount))],
+            None,
+            None,
         )?;
-        // Sign the transaction
-        let signed_psbt = self
-            .rpc
-            .rpc_client
-            .wallet_process_psbt(&psbt.psbt, None, None, Some(true))?
-            .psbt;
 
-        // Finalize and extract the transaction
-        let final_tx = self.rpc.rpc_client.finalize_psbt(&signed_psbt, Some(true))?;
+        // Add OP_RETURN output if stealth address is present
+        if let Some(stealth) = &htlc_params.stealth_address {
+            let metadata = OpReturnMetadata::new(
+                hash_lock,
+                Some(stealth.clone()),
+                0x01, // Enable rebalancing
+            );
+            let op_return = self.script_manager.create_op_return_script(&metadata)?;
+            tx_builder = self.rpc.add_output_to_transaction(&tx_builder, op_return, 0)?;
+        }
 
-        let transaction: Transaction =
-            bitcoin::consensus::encode::deserialize(&final_tx.hex.unwrap()).map_err(|e| {
-                RpcError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    e.to_string(),
-                ))
-            })?;
+        let signed_tx = self.rpc.sign_raw_transaction_with_wallet(**tx_builder, None, None)?;
+        let transaction = bitcoin::consensus::encode::deserialize(&signed_tx.hex)?;
+
+        // Cache the HTLC state
+        let state = BitcoinLockState::new(
+            amount,
+            sha256d::Hash::hash(&script.as_bytes()).to_byte_array(),
+            self.rpc.get_block_count()? as u64,
+            recipient_pubkey.serialize_uncompressed()[..20].try_into()?,
+            0xFFFFFFFF,
+            Some(htlc_params),
+            None,
+        )?;
+
+        let mut cache = self.state_cache.write().await;
+        cache.insert(transaction.txid(), state);
 
         Ok(transaction)
     }
 
-    pub fn broadcast_transaction(&self, transaction: &Transaction) -> Result<Txid, RpcError> {
-        let txid = self.rpc.rpc_client.send_raw_transaction(transaction)?;
+    pub async fn spend_htlc(
+        &self,
+        txid: &Txid,
+        preimage: &[u8],
+        recipient_key: &SecretKey,
+    ) -> Result<Transaction, Box<dyn std::error::Error>> {
+        let cache = self.state_cache.read().await;
+        let state = cache.get(txid)
+            .ok_or("HTLC state not found")?;
+
+        let htlc_params = state.htlc_params.as_ref()
+            .ok_or("No HTLC parameters found")?;
+
+        // Verify preimage
+        if !htlc_params.verify_hashlock(preimage)? {
+            return Err("Invalid preimage".into());
+        }
+
+        let recipient_pubkey = PublicKey::from_secret_key(&Secp256k1::new(), recipient_key);
+        let script = self.script_manager.create_htlc_script(htlc_params, &recipient_pubkey)?;
+
+        // Create spending transaction
+        let mut tx_builder = self.rpc.create_raw_transaction_hex(
+            &[OutPoint { txid: *txid, vout: 0 }],
+            &[(
+                Address::p2pkh(&recipient_pubkey, self.network).to_string(),
+                Amount::from_sat(htlc_params.amount),
+            )],
+            None,
+            None,
+        )?;
+
+        // Sign transaction
+        let signature = self.rpc.sign_raw_transaction_with_key(
+            &*tx_builder,
+            &[recipient_key.display_secret().to_string()],
+            &[script.as_script()],
+            None,
+        )?;
+
+        Ok(bitcoin::consensus::encode::deserialize(&signature.hex)?)
+    }
+
+    pub async fn scan_for_stealth_payments(
+        &self,
+        stealth_address: &StealthAddress,
+        scan_key: &SecretKey,
+    ) -> Result<Vec<TxOut>, Box<dyn std::error::Error>> {
+        let mut found_outputs = Vec::new();
+        let block_height = self.rpc.get_block_count()?;
+
+        for height in (block_height - 100)..=block_height {
+            let block_hash = self.rpc.get_block_hash(height)?;
+            let block = self.rpc.get_block(&block_hash)?;
+
+            for tx in block.txdata {
+                let outputs = self.script_manager.scan_transaction_outputs(
+                    &tx,
+                    stealth_address,
+                    scan_key,
+                )?;
+                found_outputs.extend(outputs.into_iter().map(|(_, output)| output));
+            }
+        }
+
+        Ok(found_outputs)
+    }
+
+    pub async fn broadcast_transaction(&self, transaction: &Transaction) -> Result<Txid, Box<dyn std::error::Error>> {
+        let txid = self.rpc.send_raw_transaction(&serialize(transaction))?;
         info!("Transaction broadcasted with txid: {}", txid);
         Ok(txid)
     }
 
-    pub fn wait_for_confirmation(
-        &self,
-        txid: &Txid,
-        confirmations_required: u32,
-    ) -> Result<(), RpcError> {
-        loop {
-            let tx_info = self.rpc.rpc_client.get_transaction(txid, Some(true))?;
-            let confirmations = tx_info.info.confirmations;
-            if confirmations >= confirmations_required as i32 {
-                break;
-            } else {
-                info!(
-                    "Transaction {} has {} confirmations. Waiting for {} confirmations...",
-                    txid, confirmations, confirmations_required
-                );
-                sleep(Duration::from_secs(30)); // Wait before checking again
+    pub async fn wait_for_confirmation(&self, txid: &Txid, confirmations: u32) -> Result<(), Box<dyn std::error::Error>> {
+        let start_time = SystemTime::now();
+        let timeout = Duration::from_secs(3600); // 1 hour timeout
+
+        while SystemTime::now().duration_since(start_time)? < timeout {
+            let tx_info = self.rpc.get_raw_transaction_info(txid, None)?;
+            
+            if let Some(confirms) = tx_info.confirmations {
+                if confirms >= (confirmations as i32).try_into().unwrap() {
+                    info!("Transaction {} confirmed with {} confirmations", txid, confirms);
+                    return Ok(());
+                }
+                info!("Waiting for {} more confirmations for tx {}", confirmations - confirms as u32, txid);
+            }
+
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+
+        Err("Transaction confirmation timeout".into())
+    }
+
+    pub async fn verify_transaction(&self, txid: &Txid) -> Result<bool, Box<dyn std::error::Error>> {
+        let tx_info = self.rpc.get_raw_transaction_info(txid, None)?;
+        let cache = self.state_cache.read().await;
+        
+        if let Some(state) = cache.get(txid) {
+            if let Some(htlc) = &state.htlc_params {
+                let current_height = self.rpc.get_block_count()? as u32;
+                return Ok(htlc.verify_timelock(current_height));
             }
         }
-        Ok(())
-    }
 
-    pub fn get_transaction_details(
-        &self,
-        txid: &Txid,
-    ) -> Result<bitcoincore_rpc::jsonrpc::serde_json::Value, RpcError> {
-        Ok(serde_json::to_value(
-            self.rpc.rpc_client.get_raw_transaction_info(txid, None)?,
-        )?)
+        Ok(tx_info.confirmations.unwrap_or(0) > 0)
     }
 }
 
-// Ensure that BitcoinRpcClient's fields are public or provide methods to access them
-pub struct BitcoinRpcClient {
-    pub rpc_client: RpcClient,
-    pub config: BitcoinRpcConfig,
-    // Removed 'inner' field if not necessary
-}
-
-impl BitcoinRpcClient {
-    /// Initializes a new RPC client.
-    pub fn from_config(
-        rpc_url: &str,
-        rpc_user: &str,
-        rpc_password: &str,
-    ) -> Result<Self, RpcError> {
-        let auth = Auth::UserPass(rpc_user.to_string(), rpc_password.to_string());
-        let client = RpcClient::new(rpc_url, auth)?;
-        Ok(Self {
-            rpc_client: client,
-            config: BitcoinRpcConfig {
-                url: rpc_url.to_string(),
-                user: rpc_user.to_string(),
-                password: rpc_password.to_string(),
-            },
-        })
-    }
-}
-
-pub struct BitcoinRpcConfig {
-    pub url: String,
-    pub user: String,
-    pub password: String,
-}
-
-pub struct Person {
-    name: String, // Private by default
-}
-
-impl Person {
-    pub fn get_name(&self) -> &String {
-        &self.name
-    }
-
-    pub fn set_name(&mut self, name: String) {
-        self.name = name;
-    }
-}
-
-#[allow(dead_code)]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize the logger
-    env_logger::init();
-
-    // Load RPC credentials from environment variables
-    let rpc_url =
-        std::env::var("RPC_URL").unwrap_or_else(|_| "http://localhost:18332".to_string());
-    let rpc_user = std::env::var("RPC_USER")?;
-    let rpc_password = std::env::var("RPC_PASSWORD")?;
-
-    // Create the Bitcoin client
-    let client = BitcoinClient::from_config(&rpc_url, &rpc_user, &rpc_password)?;
-
-    // Retrieve blockchain information
-    let blockchain_info = client.get_blockchain_info()?;
-    println!("Blockchain info: {:?}", blockchain_info);
-
-    // Example of creating, broadcasting, and monitoring a transaction
-    let transaction = client.create_and_sign_transaction(
-        "tb1q5p5v8p6z9z5u0a2l3q8u9y0v5t4r3e2w1t0r9p8e7q6r5t4e3w2n1u0z9v0",
-        100_000_000,
-    )?;
-    println!("Transaction created");
-
-    let txid = client.broadcast_transaction(&transaction)?;
-    println!("Transaction broadcasted with Txid: {}", txid);
-
-    client.wait_for_confirmation(&txid, 6)?;
-    let transaction_details = client.get_transaction_details(&txid)?;
-    println!("Transaction details: {:?}", transaction_details);
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::env;
-    use std::str::FromStr;
-
-    #[test]
-    fn test_get_blockchain_info() {
-        let rpc_url =
-            env::var("RPC_URL").unwrap_or_else(|_| "http://localhost:18332".to_string());
-        let rpc_user = env::var("RPC_USER").expect("RPC_USER not set");
-        let rpc_password = env::var("RPC_PASSWORD").expect("RPC_PASSWORD not set");
-
-        let client = BitcoinClient::from_config(&rpc_url, &rpc_user, &rpc_password)
-            .expect("Failed to create Bitcoin client");
-
-        let info = client
-            .get_blockchain_info()
-            .expect("Failed to get blockchain info");
-        assert!(info.is_object());
-    }
-
-    #[test]
-    fn test_create_and_sign_transaction() {
-        let rpc_url =
-            env::var("RPC_URL").unwrap_or_else(|_| "http://localhost:18332".to_string());
-        let rpc_user = env::var("RPC_USER").expect("RPC_USER not set");
-        let rpc_password = env::var("RPC_PASSWORD").expect("RPC_PASSWORD not set");
-
-        let client = BitcoinClient::from_config(&rpc_url, &rpc_user, &rpc_password)
-            .expect("Failed to create Bitcoin client");
-
-        let result = client.create_and_sign_transaction(
-            "tb1q5p5v8p6z9z5u0a2l3q8u9y0v5t4r3e2w1t0r9p8e7q6r5t4e3w2n1u0z9v0",
-            10_000,
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_get_transaction_details() {
-        let rpc_url =
-            env::var("RPC_URL").unwrap_or_else(|_| "http://localhost:18332".to_string());
-        let rpc_user = env::var("RPC_USER").expect("RPC_USER not set");
-        let rpc_password = env::var("RPC_PASSWORD").expect("RPC_PASSWORD not set");
-
-        let client = BitcoinClient::from_config(&rpc_url, &rpc_user, &rpc_password)
-            .expect("Failed to create Bitcoin client");
-
-        // Note: This test requires a valid transaction from the blockchain
-        let txid = Txid::from_str(
-            "0000000000000000000000000000000000000000000000000000000000000000",
-        )
-        .unwrap();
-
-        let result = client.get_transaction_details(&txid);
-        assert!(result.is_err()); // Expected to fail with invalid txid
-    }
-}
