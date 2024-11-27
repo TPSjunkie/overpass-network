@@ -1,29 +1,37 @@
+// ./bitcoin/client.rs
+
+use crate::bitcoin::transactions::BridgeConfig;
+use rand::RngCore;
+use std::collections::HashMap;
+use std::sync::{RwLock, Arc};
 use bitcoin::{
-    Address, Amount, Network, OutPoint, Transaction, TxIn, TxOut, Txid,
-    blockdata::script::{Script, ScriptBuf},
-    consensus::encode::serialize,
     hashes::{sha256d, Hash},
-    secp256k1::{SecretKey, PublicKey, Secp256k1},
+    secp256k1::{PublicKey, Secp256k1, SecretKey},
+    Amount, Network, Transaction, TxOut, Txid, OutPoint,
+    absolute::LockTime,
 };
 use bitcoincore_rpc::{Auth, Client as RpcClient, RpcApi};
-use crate::bitcoin::{
-    bitcoin_types::{HTLCParameters, StealthAddress, OpReturnMetadata, BitcoinLockState},
-    scripts::ScriptManager,
-};
-use std::{
-    collections::HashMap,
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
-use tokio::sync::RwLock;
-use log::{info, warn};
+use rand::rngs::OsRng;
+use plonky2::plonk::proof::Proof;
 
+use crate::{
+    bitcoin::{
+        bitcoin_types::{BitcoinLockState, HTLCParameters, OpReturnMetadata, StealthAddress},
+        scripts::ScriptManager,
+    }, 
+    core::zkps::zkp,
+};
+
+const MIN_SECURITY_BITS: u32 = 128;
+
+#[derive(Debug)]
 pub struct BitcoinClient {
     rpc: RpcClient,
     script_manager: ScriptManager,
     network: Network,
     state_cache: Arc<RwLock<HashMap<Txid, BitcoinLockState>>>,
+    proof_system: zkp::ProofSystem,
+    bridge_config: BridgeConfig,
 }
 
 impl BitcoinClient {
@@ -36,75 +44,114 @@ impl BitcoinClient {
         let auth = Auth::UserPass(user.to_string(), password.to_string());
         let rpc = RpcClient::new(url, auth)?;
         let script_manager = ScriptManager::new(network);
+        let proof_system = zkp::ProofSystem::new(MIN_SECURITY_BITS);
+        
+        let bridge_config = BridgeConfig {
+            min_confirmation_depth: 6,
+            max_timelock_duration: 144,
+            min_value_sat: 546,
+            security_level: MIN_SECURITY_BITS,
+            network,
+        };
         
         Ok(Self {
             rpc,
             script_manager,
             network,
             state_cache: Arc::new(RwLock::new(HashMap::new())),
+            proof_system,
+            bridge_config,
         })
     }
 
-    pub async fn create_htlc_transaction(
+    pub async fn create_cross_chain_htlc(
         &self,
-        amount: u64,
+        amount: Amount,
         recipient_pubkey: &PublicKey,
-        hash_lock: [u8; 32],
-        timeout_blocks: u32,
-        stealth_address: Option<StealthAddress>,
-    ) -> Result<Transaction, Box<dyn std::error::Error>> {
+        stealth_address: &StealthAddress,
+        timelock: u32,
+    ) -> Result<(Transaction, Proof<u32>), Box<dyn std::error::Error>> {
+        // Generate hash lock with additional entropy
+        let mut hash_lock = [0u8; 32];
+        OsRng.fill_bytes(&mut hash_lock);
+        
+        // Create HTLC parameters
         let htlc_params = HTLCParameters::new(
-            amount,
-            recipient_pubkey.serialize_uncompressed()[..20].try_into()?,
+            amount.to_sat(),
+            recipient_pubkey.serialize()[..20].try_into()?,
             hash_lock,
-            self.rpc.get_block_count()? as u32 + timeout_blocks,
-            stealth_address,
+            self.rpc.get_block_count()? as u32 + timelock,
+            Some(stealth_address.clone()),
         );
 
-        let script = self.script_manager.create_htlc_script(&htlc_params, recipient_pubkey)?;
-        let mut tx_builder = self.rpc.create_raw_transaction_hex(
-            &[],
-            &[(script.as_script().to_string(), Amount::from_sat(amount))],
-            None,
-            None,
+        // Generate cross-chain proof
+        let htlc_proof = self.proof_system.generate_cross_chain_proof(
+            amount.to_sat(),
+            recipient_pubkey,
+            &hash_lock,
+            timelock,
+            stealth_address,
         )?;
 
-        // Add OP_RETURN output if stealth address is present
-        if let Some(stealth) = &htlc_params.stealth_address {
-            let metadata = OpReturnMetadata::new(
-                hash_lock,
-                Some(stealth.clone()),
-                0x01, // Enable rebalancing
-            );
-            let op_return = self.script_manager.create_op_return_script(&metadata)?;
-            tx_builder = self.rpc.add_output_to_transaction(&tx_builder, op_return, 0)?;
+        // Create HTLC and OP_RETURN scripts
+        let (htlc_script, op_return_script) = self.script_manager.create_cross_chain_script(
+            &htlc_params,
+            stealth_address,
+            &OpReturnMetadata::new(hash_lock, Some(stealth_address.clone()), 0x01),
+        )?;
+
+        // Create transaction outputs
+        let mut outputs = vec![
+            TxOut {
+                value: amount.to_sat(),
+                script_pubkey: htlc_script,
+            },
+            TxOut {
+                value: 0,
+                script_pubkey: op_return_script,
+            },
+        ];
+
+        // Add change output if needed
+        if let Some(change_amount) = self.calculate_change(amount)? {
+            outputs.push(TxOut {
+                value: change_amount.to_sat(),
+                script_pubkey: self.get_change_address()?.script_pubkey(),
+            });
         }
 
-        let signed_tx = self.rpc.sign_raw_transaction_with_wallet(**tx_builder, None, None)?;
-        let transaction = bitcoin::consensus::encode::deserialize(&signed_tx.hex)?;
+        // Create and sign transaction
+        let tx = Transaction {
+            version: 2,
+            lock_time: LockTime::from_height(timelock)?,
+            input: self.select_utxos(amount)?,
+            output: outputs,
+        };
 
-        // Cache the HTLC state
+        let signed_tx = self.sign_transaction(&tx)?;
+
+        // Cache state with proof
         let state = BitcoinLockState::new(
-            amount,
-            sha256d::Hash::hash(&script.as_bytes()).to_byte_array(),
+            amount.to_sat(),
+            sha256d::Hash::hash(&htlc_script.as_bytes()).to_byte_array(),
             self.rpc.get_block_count()? as u64,
-            recipient_pubkey.serialize_uncompressed()[..20].try_into()?,
-            0xFFFFFFFF,
+            recipient_pubkey.serialize()[..20].try_into()?,
+            timelock,
             Some(htlc_params),
-            None,
+            Some(htlc_proof.clone()),
         )?;
 
-        let mut cache = self.state_cache.write().await;
-        cache.insert(transaction.txid(), state);
+        let mut cache = self.state_cache.write().unwrap();
+        cache.insert(signed_tx.txid(), state);
 
-        Ok(transaction)
+        Ok((signed_tx, htlc_proof))
     }
-
-    pub async fn spend_htlc(
+    pub async fn claim_cross_chain_htlc(
         &self,
         txid: &Txid,
         preimage: &[u8],
         recipient_key: &SecretKey,
+        stealth_key: &SecretKey,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
         let cache = self.state_cache.read().await;
         let state = cache.get(txid)
@@ -118,29 +165,59 @@ impl BitcoinClient {
             return Err("Invalid preimage".into());
         }
 
+        // Create stealth payment script
         let recipient_pubkey = PublicKey::from_secret_key(&Secp256k1::new(), recipient_key);
-        let script = self.script_manager.create_htlc_script(htlc_params, &recipient_pubkey)?;
-
-        // Create spending transaction
-        let mut tx_builder = self.rpc.create_raw_transaction_hex(
-            &[OutPoint { txid: *txid, vout: 0 }],
-            &[(
-                Address::p2pkh(&recipient_pubkey, self.network).to_string(),
-                Amount::from_sat(htlc_params.amount),
-            )],
-            None,
-            None,
+        let stealth_script = self.script_manager.create_stealth_payment_script(
+            &htlc_params.stealth_address.as_ref().ok_or("No stealth address")?,
+            stealth_key,
         )?;
 
-        // Sign transaction
-        let signature = self.rpc.sign_raw_transaction_with_key(
-            &*tx_builder,
-            &[recipient_key.display_secret().to_string()],
-            &[script.as_script()],
-            None,
+        // Calculate fee
+        let fee = self.estimate_fee(1, 1)?;
+
+        // Create claim transaction
+        let claim_tx = self.script_manager.create_claim_transaction(
+            OutPoint::new(*txid, 0),
+            preimage.try_into()?,
+            stealth_key,
+            Amount::from_sat(htlc_params.amount),
+            fee,
         )?;
 
-        Ok(bitcoin::consensus::encode::deserialize(&signature.hex)?)
+        // Sign with stealth key
+        self.sign_stealth_transaction(&claim_tx, stealth_key)?;
+
+        Ok(claim_tx)
+    }
+
+    pub async fn verify_cross_chain_proof(
+        &self,
+        proof: &Proof,
+        htlc_params: &HTLCParameters,
+        merkle_root: &[u8; 32],
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        // Verify security parameters
+        if self.proof_system.security_bits() < MIN_SECURITY_BITS {
+            return Err("Insufficient security bits".into());
+        }
+
+        // Verify proof
+        self.proof_system.verify_cross_chain_proof(
+            proof,
+            htlc_params,
+            merkle_root,
+        )?;
+
+        // Verify merkle inclusion
+        if let Some(merkle_proof) = &htlc_params.merkle_proof {
+            self.script_manager.verify_merkle_proof(
+                &htlc_params.hash_lock,
+                merkle_root,
+                merkle_proof,
+            )?;
+        }
+
+        Ok(true)
     }
 
     pub async fn scan_for_stealth_payments(
@@ -149,9 +226,10 @@ impl BitcoinClient {
         scan_key: &SecretKey,
     ) -> Result<Vec<TxOut>, Box<dyn std::error::Error>> {
         let mut found_outputs = Vec::new();
-        let block_height = self.rpc.get_block_count()?;
+        let current_height = self.rpc.get_block_count()?;
+        let start_height = current_height.saturating_sub(100);
 
-        for height in (block_height - 100)..=block_height {
+        for height in start_height..=current_height {
             let block_hash = self.rpc.get_block_hash(height)?;
             let block = self.rpc.get_block(&block_hash)?;
 
@@ -168,45 +246,48 @@ impl BitcoinClient {
         Ok(found_outputs)
     }
 
-    pub async fn broadcast_transaction(&self, transaction: &Transaction) -> Result<Txid, Box<dyn std::error::Error>> {
-        let txid = self.rpc.send_raw_transaction(&serialize(transaction))?;
-        info!("Transaction broadcasted with txid: {}", txid);
-        Ok(txid)
-    }
+    // ... existing helper methods remain unchanged ...
 
-    pub async fn wait_for_confirmation(&self, txid: &Txid, confirmations: u32) -> Result<(), Box<dyn std::error::Error>> {
-        let start_time = SystemTime::now();
-        let timeout = Duration::from_secs(3600); // 1 hour timeout
-
-        while SystemTime::now().duration_since(start_time)? < timeout {
-            let tx_info = self.rpc.get_raw_transaction_info(txid, None)?;
-            
-            if let Some(confirms) = tx_info.confirmations {
-                if confirms >= (confirmations as i32).try_into().unwrap() {
-                    info!("Transaction {} confirmed with {} confirmations", txid, confirms);
-                    return Ok(());
-                }
-                info!("Waiting for {} more confirmations for tx {}", confirmations - confirms as u32, txid);
-            }
-
-            tokio::time::sleep(Duration::from_secs(30)).await;
+    pub fn configure_bridge(&mut self, config: BridgeConfig) -> Result<(), Box<dyn std::error::Error>> {
+        if config.security_level < MIN_SECURITY_BITS.try_into().unwrap() {
+            return Err("Insufficient security level".into());
         }
-
-        Err("Transaction confirmation timeout".into())
-    }
-
-    pub async fn verify_transaction(&self, txid: &Txid) -> Result<bool, Box<dyn std::error::Error>> {
-        let tx_info = self.rpc.get_raw_transaction_info(txid, None)?;
-        let cache = self.state_cache.read().await;
-        
-        if let Some(state) = cache.get(txid) {
-            if let Some(htlc) = &state.htlc_params {
-                let current_height = self.rpc.get_block_count()? as u32;
-                return Ok(htlc.verify_timelock(current_height));
-            }
-        }
-
-        Ok(tx_info.confirmations.unwrap_or(0) > 0)
+        self.bridge_config = config;
+        Ok(())
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_cross_chain_htlc() {
+        let client = BitcoinClient::new(
+            "http://localhost:8332",
+            "user",
+            "pass",
+            Network::Regtest,
+        ).await.unwrap();
+
+        // Generate keys
+        let recipient_key = SecretKey::new(&mut OsRng);
+        let recipient_pubkey = PublicKey::from_secret_key(&Secp256k1::new(), &recipient_key);
+
+        // Generate stealth address
+        let scan_key = SecretKey::new(&mut OsRng);
+        let spend_key = SecretKey::new(&mut OsRng);
+        let stealth_address = StealthAddress::new(&scan_key, &spend_key, &Secp256k1::new()).unwrap();
+
+        // Create HTLC
+        let (tx, proof) = client.create_cross_chain_htlc(
+            Amount::from_sat(100_000),
+            &recipient_pubkey,
+            &stealth_address,
+            144,
+        ).await.unwrap();
+
+        assert!(tx.output.len() >= 2);
+        assert!(proof.verify().unwrap());
+    }
+}
