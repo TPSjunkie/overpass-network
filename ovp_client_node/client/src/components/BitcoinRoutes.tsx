@@ -1,5 +1,5 @@
 import { Route } from "react-router-dom";
-import { BitcoinDashboard } from "../pages/BitcoinDashboard";
+import { BitcoinDashboard } from "./BitcoinDashboard";
 import { BitcoinBridge } from "./BitcoinBridge";
 import { OverpassBitcoinControl } from "./OverpassBitcoinControl";
 
