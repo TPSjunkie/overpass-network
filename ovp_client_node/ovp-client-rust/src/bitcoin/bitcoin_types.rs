@@ -1,5 +1,8 @@
+use bitcoin::Network;
+use bitcoin::bip32::ExtendedPrivKey;
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use tokio::sync::RwLock;    
+use crate::common::types::ops::{OpCode, WalletOpCode};
 use bitcoin::{
     hashes::{sha256d, Hash, HashEngine},
     secp256k1::{PublicKey, SecretKey, Secp256k1},
@@ -31,6 +34,80 @@ pub enum BitcoinStateError {
     CryptoError(String),
     #[error("State error: {0}")]
     StateError(String),
+}
+
+// CrossChainState
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CrossChainState {
+    pub bitcoin_state: BitcoinState,
+    pub ethereum_state: EthereumState,
+}
+// BitcoinState 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]    
+pub struct BitcoinState {
+    pub stealth_addresses: Vec<StealthAddress>,
+    pub bitcoin_wallet: BitcoinWallet,
+    pub bitcoin_node: BitcoinNode,
+}
+
+
+
+
+// BridgeParameters
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BridgeParameters {
+    pub bitcoin_node: BitcoinNode,
+    pub ethereum_node: EthereumNode,
+    pub ethereum_private_key: SecretKey,
+}
+
+// EthereumState
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct EthereumState {
+    pub bridge_parameters: BridgeParameters,
+    pub ethereum_wallet: EthereumWallet,
+    pub ethereum_node: EthereumNode,
+}
+
+// BitcoinNode
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BitcoinNode {
+    pub network: Network,
+    pub node_url: String,
+    pub rpc_user: String,
+    pub rpc_password: String,
+}
+
+// EthereumNode
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct EthereumNode {
+    pub network: Network,
+    pub node_url: String,
+    pub rpc_user: String,
+    pub rpc_password: String,
+}
+
+// BitcoinWallet
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BitcoinWallet {
+    pub network: Network,
+    pub wallet_name: String,
+    pub wallet_password: String,
+    pub mnemonic: String,
+    pub seed: Vec<u8>,
+    pub master_key: ExtendedPrivKey,
+}
+
+// EthereumWallet
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct EthereumWallet {
+    pub network: Network,
+    pub wallet_name: String,
+    pub wallet_password: String,
+    pub mnemonic: String,
+    pub seed: Vec<u8>,
+    pub master_key: ExtendedPrivKey,
 }
 
 
@@ -494,6 +571,9 @@ impl BitcoinLockState {
     }}
 #[cfg(test)]
 mod tests {
+    use bitcoin::opcodes::all;
+use bitcoin::Script;
+use bitcoin::absolute::LockTime;
     use super::*;
     use bitcoin::secp256k1::Secp256k1;
 
@@ -518,9 +598,16 @@ mod tests {
             input: vec![],
             output: vec![],
         };
+        // Create test output script
         
-        let ephemeral_key = SecretKey::new(&mut rand::thread_rng());
-        let script = stealth_address.create_output_script(&ephemeral_key, &secp).unwrap();
+        let ephemeral_key = SecretKey::from_slice(&[0; 32]).unwrap();
+        let ephemeral_pubkey = bitcoin::PublicKey::from_private_key(&secp, &bitcoin::PrivateKey::new(ephemeral_key, bitcoin::Network::Bitcoin));
+        let script = Script::builder()
+            .push_key(&ephemeral_pubkey)
+            .push_opcode(all::OP_CHECKSIG)
+            .into_script();
+        
+    
         tx.output.push(TxOut {
             value: 50000,
             script_pubkey: script,
@@ -528,10 +615,27 @@ mod tests {
 
         let found_outputs = stealth_address.scan_outputs(&tx, &scan_key).unwrap();
         assert_eq!(found_outputs.len(), 1);
-    }
-
+    }    #[tokio::test]    async fn test_htlc_operations() {        let htlc = HTLCParameters::new(            
+            100,
+            [0u8; 20],
+            [1u8; 32],
+            1000,
+            None,
+        );
+        assert!(htlc.verify_timelock(100));
+        assert!(!htlc.verify_timelock(101));
+        assert!(htlc.verify_timelock(1000));
+        assert!(!htlc.verify_timelock(1001));
+        assert!(htlc.verify_timelock(20000));
+        assert!(!htlc.verify_timelock(20001));
+        assert!(htlc.verify_timelock(30000));
+        assert!(!htlc.verify_timelock(30001));
+        assert!(htlc.verify_timelock(40000));
+        assert!(!htlc.verify_timelock(40001));
+    }  
+   
     #[tokio::test]
-    async fn test_htlc_operations() {
+    async fn test_htlc_operations_async() {
         let htlc = HTLCParameters::new(
             1_000_000,
             [1u8; 20],
@@ -557,7 +661,6 @@ mod tests {
         );        
         assert!(htlc_with_hash.verify_hashlock(preimage).unwrap());
     }
-
     #[tokio::test]
     async fn test_op_return_metadata() {
         let channel_id = [3u8; 32];
