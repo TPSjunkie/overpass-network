@@ -39,10 +39,12 @@ bip32 = "0.5.1"
 base58check = { version = "0.1.0", default-features = false }
 bech32 = "0.9.1"
 secp256k1 = { version = "0.27.0", features = ["serde", "rand-std"] }
+chacha20poly1305 = "0.10.1"
 
 # Plonky2 Dependencies
 plonky2 = { git = "https://github.com/mir-protocol/plonky2", branch = "main", features = ["parallel"] }
 plonky2_field = { git = "https://github.com/mir-protocol/plonky2", package = "plonky2_field", branch = "main" }
+plonky2_maybe_rayon = "0.1"
 
 # WASM and Browser Dependencies
 wasm-bindgen = { version = "0.2.89", features = ["serde-serialize"] }
@@ -101,6 +103,7 @@ array-init = "2.1.0"
 metrics = "0.21.1"
 lru_time_cache = "0.11.11"
 crc = "3.0.1"
+num_cpus = "1.16.0"
 colored = "2.0.4"
 rayon = { version = "1.8.0", optional = true }
 termcolor = "1.4.0"

@@ -6,4 +6,4 @@ pub mod transactions;
 pub mod wallet;
 pub mod rpc_client;
 pub mod bitcoin_types;
-//pub mod zkp_handler;
+pub mod zkp_handler;
