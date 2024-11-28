@@ -50,14 +50,14 @@ pub struct CrossChainConfig {
     pub security_bits: usize,
 }
 
-impl Default for CrossChainConfig {
-    fn default() -> Self {
+impl new for CrossChainConfig {
+    fn new() -> Self {
         Self {
             min_confirmation_depth: 6,
-            max_timelock_duration: 144,
-            min_value_sat: 546,
-            fee_rate: 1000,
-            security_bits: 128,
+            max_timelock_duration: 144, // 24 hours in blocks
+            min_value_sat: 546,         // Bitcoin dust limit
+            fee_rate: 1000,             // 1000 satoshis per byte
+            security_bits: 128,         // Minimum security parameter λ
         }
     }
 }
@@ -78,17 +78,23 @@ impl ZkpHandler {
         let client = BitcoinClient::new(config)
             .map_err(|e| JsValue::from_str(&format!("Failed to create BitcoinClient: {}", e)))?;
         
+        let plonky2_system = Arc::new(RwLock::new(Plonky2SystemHandle::new()));
+        let state_boc = Arc::new(RwLock::new(STATEBOC::new()));
+        let wallet_manager = Arc::new(RwLock::new(WalletManager::new()));
+        let client_arc = Arc::new(RwLock::new(client));
+
         Ok(ZkpHandler {
-            client: Arc::new(RwLock::new(client)),
-            wallet_manager: Arc::new(RwLock::new(WalletManager::new())),
+            client: client_arc.clone(),
+            wallet_manager: wallet_manager.clone(),
             transaction_manager: Arc::new(RwLock::new(TransactionManager::new(
-                Arc::new(RwLock::new(Plonky2SystemHandle::new())),
-                Arc::new(RwLock::new(STATEBOC::new())),
+                client_arc,
+                wallet_manager,
+                plonky2_system,
+                state_boc,
             ))),
-            bridge_config: CrossChainConfig::default(),
+            bridge_config: CrossChainConfig::new(),
         })
     }
-
     // New cross-chain methods
     pub async fn create_cross_chain_swap(
         &self,
@@ -207,7 +213,6 @@ impl ZkpHandler {
                 &proof,
                 &self.bridge_config,
                 &self.wallet_manager.read().unwrap(),
-                &self.transaction_manager.read().unwrap(),
             )
             .await
             .map_err(|e| JsValue::from_str(&format!("Failed to verify cross-chain proof: {}", e)))?;

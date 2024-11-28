@@ -338,8 +338,10 @@ pub struct OpReturnMetadata {
     pub channel_id: [u8; 32],
     pub metadata: Vec<u8>,
     pub proof_data: Option<Vec<u8>>,
+    pub(crate) bridge_id: [u8; 32],
+    pub(crate) merkle_root: [u8; 32],
+    pub(crate) data: Vec<u8>,
 }
-
 impl OpReturnMetadata {
     pub const MAX_SIZE: usize = 80;
     pub const PROTOCOL_IDENTIFIER: [u8; 4] = *b"OVPS";
@@ -356,6 +358,9 @@ impl OpReturnMetadata {
             channel_id,
             metadata: Vec::new(),
             proof_data: None,
+            bridge_id: [0; 32], // Assuming 32 bytes for bridge_id
+            merkle_root: [0; 32], // Assuming 32 bytes for merkle_root
+            data: Vec::new(),
         }
     }
 
@@ -427,6 +432,9 @@ impl OpReturnMetadata {
             channel_id,
             metadata: Vec::new(),
             proof_data: None,
+            bridge_id: todo!(),
+            merkle_root: todo!(),
+            data: todo!(),
         })
     }
 

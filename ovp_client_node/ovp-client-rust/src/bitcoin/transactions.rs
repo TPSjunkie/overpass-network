@@ -1,7 +1,13 @@
 // ./src/core/client/wallet_extension/transactions.rs
 
+use bitcoin::key::Secp256k1;
+use secp256k1::Secp256k1;
+use bitcoin::address::NetworkChecked;
+use crate::core::client::transaction::transaction_manager::TransactionManager;
+use derive_more::Error;
+use thiserror::Error;
 use bitcoin::secp256k1::{Message, SecretKey, PublicKey as Secp256k1PublicKey, KeyPair};
-use bitcoin::{Address, Amount, Network, LockTime, Script, Transaction, TxIn, TxOut, Witness};
+use bitcoin::{Address, Amount, Network, locktime, Script, Transaction, TxIn, TxOut, Witness};
 use bitcoin::blockdata::script::{Builder, ScriptBuf};
 use bitcoin::blockdata::opcodes::all as opcodes;
 use bitcoin::hashes::{sha256, hash160, Hash};
@@ -47,8 +53,6 @@ pub struct HtlcParams {
 // Add cross-chain specific error types
 #[derive(Error, Debug)]
 pub enum TransactionError {
-    // ... existing errors ...
-
     #[error("Cross-chain verification failed: {0}")]
     CrossChainError(String),
 
@@ -122,7 +126,7 @@ impl TransactionManager {
             // Hash timelock branch
             .push_opcode(opcodes::OP_IF)
                 .push_opcode(opcodes::OP_HASH256)
-                .push_slice(&params.hash_lock)
+                .push_slice(¶ms.hash_lock)
                 .push_opcode(opcodes::OP_EQUALVERIFY)
                 // Add stealth address verification
                 .push_slice(stealth_script.as_bytes())
@@ -131,14 +135,14 @@ impl TransactionManager {
                 .push_int(32)
                 .push_opcode(opcodes::OP_EQUALVERIFY)
                 .push_opcode(opcodes::OP_HASH256)
-                .push_slice(&params.recipient_key.inner.serialize())
-                .push_opcode(opcodes::OP_CHECKSIG)
+                .push_slice(¶ms.recipient_key.inner.serialize())
+                .push_opcode(opcodes::OP_CHECKMULTISIGVERIFY)
             // Refund branch
             .push_opcode(opcodes::OP_ELSE)
                 .push_int(params.timelock as i64)
                 .push_opcode(opcodes::OP_CHECKLOCKTIMEVERIFY)
                 .push_opcode(opcodes::OP_DROP)
-                .push_slice(&params.refund_key.inner.serialize())
+                .push_slice(¶ms.refund_key.inner.serialize())
                 .push_opcode(opcodes::OP_CHECKSIG)
             .push_opcode(opcodes::OP_ENDIF)
             .into_script();

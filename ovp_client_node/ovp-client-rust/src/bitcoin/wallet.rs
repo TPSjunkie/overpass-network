@@ -245,7 +245,6 @@ impl WalletManager {
         })
     }
 
-    // ... rest of the implementation remains the same ...
 }
 
 #[derive(Debug, Clone)]
@@ -308,6 +307,5 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // ... other tests remain the same ...
+   
 }
-```

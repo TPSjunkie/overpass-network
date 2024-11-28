@@ -1,25 +1,29 @@
 // ./bitcoin/client.rs
 
+use bitcoin::AddressType;
+use bitcoin::secp256k1::{Secp256k1, SecretKey, PublicKey};
 use crate::bitcoin::transactions::BridgeConfig;
+use crate::core::zkps::zkp;
+use crate::core::zkps::proof::ProofVerifier;
+use crate::core::zkps::plonky2::Circuit;
+use crate::core::zkps::zkp_interface::ProofMetadataJS;
+use crate::core::client::channel::channel_contract::ChannelNonce;;
 use rand::RngCore;
 use std::collections::HashMap;
-use std::sync::{RwLock, Arc};
+use std::sync::{RwLock, Arc, Mutex};
 use bitcoin::{
     hashes::{sha256d, Hash},
-    secp256k1::{PublicKey, Secp256k1, SecretKey},
     Amount, Network, Transaction, TxOut, Txid, OutPoint,
     absolute::LockTime,
 };
 use bitcoincore_rpc::{Auth, Client as RpcClient, RpcApi};
 use rand::rngs::OsRng;
 use plonky2::plonk::proof::Proof;
+use plonky2::field::goldilocks_field::GoldilocksField;
 
-use crate::{
-    bitcoin::{
-        bitcoin_types::{BitcoinLockState, HTLCParameters, OpReturnMetadata, StealthAddress},
-        scripts::ScriptManager,
-    }, 
-    core::zkps::zkp,
+use crate::bitcoin::{
+    bitcoin_types::{BitcoinLockState, HTLCParameters, OpReturnMetadata, StealthAddress},
+    scripts::ScriptManager
 };
 
 const MIN_SECURITY_BITS: u32 = 128;
@@ -30,10 +34,9 @@ pub struct BitcoinClient {
     script_manager: ScriptManager,
     network: Network,
     state_cache: Arc<RwLock<HashMap<Txid, BitcoinLockState>>>,
-    proof_system: zkp::ProofSystem,
+    proof_system: zkp::ZKProofSystem,
     bridge_config: BridgeConfig,
 }
-
 impl BitcoinClient {
     pub async fn new(
         url: &str,
@@ -53,7 +56,6 @@ impl BitcoinClient {
             security_level: MIN_SECURITY_BITS,
             network,
         };
-        
         Ok(Self {
             rpc,
             script_manager,
@@ -63,18 +65,15 @@ impl BitcoinClient {
             bridge_config,
         })
     }
-
-    pub async fn create_cross_chain_htlc(
+    pub fn create_cross_chain_htlc(
         &self,
         amount: Amount,
         recipient_pubkey: &PublicKey,
         stealth_address: &StealthAddress,
         timelock: u32,
-    ) -> Result<(Transaction, Proof<u32>), Box<dyn std::error::Error>> {
-        // Generate hash lock with additional entropy
+    ) -> Result<(Transaction, Proof<GoldilocksField, plonky2::iop::witness::PartialWitness<GoldilocksField>>), Box<dyn std::error::Error>> {        // Generate hash lock with additional entropy
         let mut hash_lock = [0u8; 32];
         OsRng.fill_bytes(&mut hash_lock);
-        
         // Create HTLC parameters
         let htlc_params = HTLCParameters::new(
             amount.to_sat(),
@@ -146,6 +145,117 @@ impl BitcoinClient {
 
         Ok((signed_tx, htlc_proof))
     }
+
+    fn calculate_change(&self, amount: Amount) -> Result<Option<Amount>, Box<dyn std::error::Error>> {
+        // Get total input amount from selected UTXOs
+        let inputs = self.select_utxos(amount)?;
+        let mut total_input = Amount::ZERO;
+        
+        for input in inputs {
+            let utxo = self.rpc.get_tx_out(&input.previous_output.txid, input.previous_output.vout, None)?
+                .ok_or("UTXO not found")?;
+            total_input += Amount::from_sat(utxo.value);
+        }
+
+        // Calculate fee
+        let fee = self.estimate_fee(inputs.len(), 2)?;
+        
+        // Calculate change amount
+        let total_output = amount + fee;
+        
+        if total_input <= total_output {
+            return Ok(None);
+        }
+        
+        let change = total_input - total_output;
+        
+        // Only return change if it's above dust threshold
+        if change > Amount::from_sat(546) {
+            Ok(Some(change))
+        } else {
+            Ok(None)
+        }
+    }
+    fn get_change_address(&self) -> Result<bitcoin::Address, Box<dyn std::error::Error>> {
+        // Get a new change address from the wallet
+        let change_address = self.rpc.get_new_address(None, Some(bitcoin::json::AddressType::P2wpkh))?;
+        Ok(change_address.require_network(self.network)?)
+    }
+
+    fn select_utxos(&self, amount: Amount) -> Result<Vec<bitcoin::TxIn>, Box<dyn std::error::Error>> {
+        let mut selected_utxos = Vec::new();
+        let mut total_selected = Amount::ZERO;
+        
+        // Get list of unspent outputs
+        let unspent = self.rpc.list_unspent(None, None, None, None, None)?;
+        
+        // Sort UTXOs by amount in descending order for simple selection strategy
+        let mut sorted_utxos = unspent;
+        sorted_utxos.sort_by(|a, b| b.amount.cmp(&a.amount));
+        
+        // Select UTXOs until we have enough to cover the amount
+        for utxo in sorted_utxos {
+            if total_selected >= amount {
+                break;
+            }
+            
+            let txin = bitcoin::TxIn {
+                previous_output: bitcoin::OutPoint::new(utxo.txid, utxo.vout),
+                script_sig: bitcoin::Script::new(),
+                sequence: bitcoin::Sequence::MAX,
+                witness: bitcoin::Witness::new(),
+            };
+            
+            selected_utxos.push(txin);
+            total_selected += Amount::from_btc(utxo.amount)?;
+        }
+        
+        if total_selected < amount {
+            return Err("Insufficient funds".into());
+        }
+        
+        Ok(selected_utxos)
+    }
+    fn sign_transaction(&self, tx: &Transaction) -> Result<Transaction, Box<dyn std::error::Error>> {
+        // Create a mutable copy of the transaction
+        let mut signed_tx = tx.clone();
+        
+        // Get the private keys needed for signing from the wallet
+        let private_keys = self.rpc.dump_private_key(&self.rpc.get_address_info(&tx.output[0].script_pubkey)?)?;
+        
+        // Create signing context
+        let secp = Secp256k1::new();
+        
+        // Sign each input
+        for (input_index, input) in tx.input.iter().enumerate() {
+            // Get the UTXO being spent
+            let prev_tx = self.rpc.get_raw_transaction(&input.previous_output.txid, None)?;
+            let prev_output = &prev_tx.output[input.previous_output.vout as usize];
+            
+            // Create signature hash
+            let sighash = signed_tx.signature_hash(
+                input_index,
+                &prev_output.script_pubkey,
+                bitcoin::sighash::EcdsaSighashType::All,
+            );
+            
+            // Sign the hash
+            let signature = secp.sign_ecdsa(
+                &secp256k1::Message::from_slice(&sighash)?,
+                &private_keys,
+            );
+            
+            // Create witness data
+            let mut witness_stack = bitcoin::Witness::new();
+            witness_stack.push(signature.serialize_der().as_ref());
+            witness_stack.push(&private_keys.public_key(&secp).serialize());
+            
+            // Add witness to transaction
+            signed_tx.input[input_index].witness = witness_stack;
+        }
+        
+        Ok(signed_tx)
+    }
     pub async fn claim_cross_chain_htlc(
         &self,
         txid: &Txid,
@@ -153,8 +263,8 @@ impl BitcoinClient {
         recipient_key: &SecretKey,
         stealth_key: &SecretKey,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
-        let cache = self.state_cache.read().await;
-        let state = cache.get(txid)
+        let cache = self.state_cache.read();
+        let state = cache??.get(txid)
             .ok_or("HTLC state not found")?;
 
         let htlc_params = state.htlc_params.as_ref()
@@ -185,11 +295,10 @@ impl BitcoinClient {
         )?;
 
         // Sign with stealth key
-        self.sign_stealth_transaction(&claim_tx, stealth_key)?;
+        let signed_claim_tx = self.sign_transaction(&claim_tx)?;
 
-        Ok(claim_tx)
+        Ok(signed_claim_tx)
     }
-
     pub async fn verify_cross_chain_proof(
         &self,
         proof: &Proof,
@@ -234,7 +343,7 @@ impl BitcoinClient {
             let block = self.rpc.get_block(&block_hash)?;
 
             for tx in block.txdata {
-                let outputs = self.script_manager.scan_transaction_outputs(
+                let outputs = self.script_manager.scan_stealth_outputs(
                     &tx,
                     stealth_address,
                     scan_key,
@@ -245,8 +354,6 @@ impl BitcoinClient {
 
         Ok(found_outputs)
     }
-
-    // ... existing helper methods remain unchanged ...
 
     pub fn configure_bridge(&mut self, config: BridgeConfig) -> Result<(), Box<dyn std::error::Error>> {
         if config.security_level < MIN_SECURITY_BITS.try_into().unwrap() {
@@ -285,7 +392,7 @@ mod tests {
             &recipient_pubkey,
             &stealth_address,
             144,
-        ).await.unwrap();
+        ).unwrap();
 
         assert!(tx.output.len() >= 2);
         assert!(proof.verify().unwrap());

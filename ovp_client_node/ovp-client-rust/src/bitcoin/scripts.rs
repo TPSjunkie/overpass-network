@@ -1,6 +1,7 @@
 // ./bitcoin/scripts.rs
 
 use bitcoin::opcodes::all;
+use serde::{Serialize, Deserialize};
 use crate::bitcoin::bitcoin_types::{StealthAddress, HTLCParameters, OpReturnMetadata};
 use bitcoin::{
     address::{Address, NetworkChecked},
@@ -42,6 +43,8 @@ pub enum ScriptError {
 
 pub type Result<T> = std::result::Result<T, ScriptError>;
 
+#[derive(Debug)]
+#[derive(Debug)]
 pub struct ScriptManager {
     secp: Secp256k1<All>,
     network: Network,
@@ -76,19 +79,19 @@ impl ScriptManager {
             .push_opcode(all::OP_IF)
                 // Hash verification
                 .push_opcode(all::OP_SHA256)
-                .push_slice(&htlc_params.hash_lock)
+                .push_slice(&htlc_params.hash_lock.strict_serialize())
                 .push_opcode(all::OP_EQUALVERIFY)
                 // Stealth payment verification
-                .push_slice(&stealth_address.spend_pubkey)
+                .push_slice(&stealth_address.spend_pubkey.serialize())
                 .push_opcode(all::OP_CHECKSIG)
-                .push_slice(&stealth_address.view_tag)
+                .push_slice(&[stealth_address.view_tag])
                 .push_opcode(all::OP_DROP)
             // Timeout refund branch
             .push_opcode(all::OP_ELSE)
-                .push_int(htlc_params.timeout_height as i64)
-                .push_opcode(all::OP_CHECKLOCKTIMEVERIFY)
+                .push_int(htlc_params.timeout_height.strict_serialize())
+                .push_opcode(all::OP_CHECKMULTISIGVERIFY)
                 .push_opcode(all::OP_DROP)
-                .push_slice(&htlc_params.refund_pubkey.serialize())
+                .push_slice(&htlc_params.receiver.serialize())
                 .push_opcode(all::OP_CHECKSIG)
             .push_opcode(all::OP_ENDIF);
 
@@ -242,7 +245,6 @@ impl ScriptManager {
 
         Ok(current[..] == root[..])
     }
-
     fn is_stealth_payment(
         &self,
         script: &Script,
@@ -262,7 +264,7 @@ impl ScriptManager {
 
         let payment_hash = hash160::Hash::hash(&payment_key.serialize());
         
-        Ok(script.as_bytes().windows(20).any(|window| window == payment_hash[..]))
+        Ok(script.as_bytes().windows(20).any(|window| *window == payment_hash[..]))
     }
 }
 
@@ -282,12 +284,18 @@ mod tests {
         // Create stealth address
         let mut view_tag = [0u8; 32];
         thread_rng().fill_bytes(&mut view_tag);
+        let mut ephemeral_key = [0u8; 32];
+        thread_rng().fill_bytes(&mut ephemeral_key);
+        let mut payment_code = [0u8; 32];
+        thread_rng().fill_bytes(&mut payment_code);
         let stealth_address = StealthAddress {
-            scan_pubkey: public_key.inner,
-            spend_pubkey: public_key.inner,
+            scan_pubkey: public_key,
+            spend_pubkey: public_key,
             view_tag,
+            ephemeral_public_key: PublicKey::from_secret_key(&manager.secp, &SecretKey::from_slice(&ephemeral_key).unwrap()),
+            payment_code,
+            metadata: None,
         };
-
         // Create HTLC parameters
         let mut hash_lock = [0u8; 32];
         thread_rng().fill_bytes(&mut hash_lock);
@@ -296,8 +304,11 @@ mod tests {
             timeout_height: 144,
             refund_pubkey: public_key,
             amount: Amount::from_sat(100_000),
+            receiver: public_key,
+            stealth_address: Some(stealth_address.clone()),
+            rebalancing_proof: None,
+            state_merkle_proof: None,
         };
-
         let script = manager.create_htlc_script(&htlc_params, &stealth_address).unwrap();
         assert!(!script.is_empty());
     }
@@ -313,12 +324,18 @@ mod tests {
         // Create stealth address
         let mut view_tag = [0u8; 32];
         thread_rng().fill_bytes(&mut view_tag);
+        let mut ephemeral_key = [0u8; 32];
+        thread_rng().fill_bytes(&mut ephemeral_key);
+        let mut payment_code = [0u8; 32];
+        thread_rng().fill_bytes(&mut payment_code);
         let stealth_address = StealthAddress {
-            scan_pubkey: public_key.inner,
-            spend_pubkey: public_key.inner,
+            scan_pubkey: public_key,
+            spend_pubkey: public_key,
             view_tag,
+            ephemeral_public_key: PublicKey::from_secret_key(&manager.secp, &SecretKey::from_slice(&ephemeral_key).unwrap()),
+            payment_code,
+            metadata: None,
         };
-
         // Create HTLC parameters
         let mut hash_lock = [0u8; 32];
         thread_rng().fill_bytes(&mut hash_lock);
@@ -327,14 +344,22 @@ mod tests {
             timeout_height: 144,
             refund_pubkey: public_key,
             amount: Amount::from_sat(100_000),
+            receiver: public_key,
+            stealth_address: Some(stealth_address.clone()),
+            rebalancing_proof: None,
+            state_merkle_proof: None,
         };
-
         let metadata = OpReturnMetadata {
             bridge_id: [0u8; 32],
             merkle_root: [0u8; 32],
-            data: vec![],
+            data: None,
+            version: 1,
+            stealth_address: Some(stealth_address.clone()),
+            rebalancing_flags: 0,
+            channel_id: [0u8; 32],
+            metadata: None,
+            proof_data: None,
         };
-
         let (htlc_script, op_return_script) = manager
             .create_cross_chain_script(&htlc_params, &stealth_address, &metadata)
             .unwrap();
@@ -357,10 +382,15 @@ mod tests {
         // Create stealth address
         let mut view_tag = [0u8; 32];
         thread_rng().fill_bytes(&mut view_tag);
+        let mut payment_code = [0u8; 32];
+        thread_rng().fill_bytes(&mut payment_code);
         let stealth_address = StealthAddress {
-            scan_pubkey: scan_pubkey.inner,
-            spend_pubkey: spend_pubkey.inner,
+            scan_pubkey,
+            spend_pubkey,
             view_tag,
+            ephemeral_public_key: PublicKey::from_secret_key(&manager.secp, &SecretKey::new(&mut thread_rng())),
+            payment_code,
+            metadata: None,
         };
 
         // Create transaction with stealth payment
